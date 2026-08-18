@@ -9,6 +9,7 @@ import {
   listLength,
   PANELS,
   refresh,
+  restoreView,
   startPolling,
   state,
   setState,
@@ -23,7 +24,9 @@ import { glyph, theme, truncate } from "./theme.ts"
 
 const HEADER_ROWS = 1
 const STATUS_ROWS = 2
-const COLLAPSED_ROWS = 3
+const BOXED_ROWS = 3
+/** rows the focused panel needs before collapsing the others to bare headers */
+const FOCUS_MIN_ROWS = 6
 
 function Header(props: { width: number }) {
   const status = () => state.status.data
@@ -111,10 +114,12 @@ export function App() {
   const renderer = useRenderer()
   const dimensions = useTerminalDimensions()
 
+  const sideRows = () => dimensions().height - HEADER_ROWS - STATUS_ROWS
+  /** seven boxed panels do not fit a short terminal; collapse to headers then */
+  const compact = createMemo(() => sideRows() - BOXED_ROWS * (PANELS.length - 1) < FOCUS_MIN_ROWS)
   const capacity = createMemo(() => {
-    const sideRows = dimensions().height - HEADER_ROWS - STATUS_ROWS
-    const focusedHeight = sideRows - COLLAPSED_ROWS * (PANELS.length - 1)
-    return Math.max(1, focusedHeight - 3)
+    const others = compact() ? PANELS.length - 1 : BOXED_ROWS * (PANELS.length - 1)
+    return Math.max(1, sideRows() - others - 3)
   })
 
   useKeyboard((key) => {
@@ -124,7 +129,11 @@ export function App() {
   })
 
   onMount(() => {
-    void refresh.all()
+    // the saved panel/selection can only be restored once the lists exist
+    void refresh
+      .fast()
+      .then(restoreView)
+      .then(() => refresh.all())
     const stop = startPolling()
     onCleanup(stop)
   })
@@ -158,7 +167,7 @@ export function App() {
     >
       <Header width={dimensions().width} />
       <box style={{ flexGrow: 1, flexDirection: "row" }}>
-        <SidePanel capacity={capacity()} />
+        <SidePanel capacity={capacity()} compact={compact()} />
         <MainPane />
       </box>
       <StatusBar width={dimensions().width} />

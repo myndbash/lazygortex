@@ -107,3 +107,21 @@ export interface CommandResult {
   ms: number
   argv: string[]
 }
+
+/** One row of `gortex workspace list`. */
+export interface WorkspaceDeclaration {
+  repo: string
+  workspace: string
+  project: string
+  /** where the declaration lives: `.gortex.yaml`, global config, … */
+  source: string
+  path: string
+}
+
+/** One entry of the `gortex analyze kinds` catalogue. */
+export interface AnalyzeKind {
+  name: string
+  description: string
+  /** kinds that stamp metadata into the graph rather than only reading it */
+  writes: boolean
+}

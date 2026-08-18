@@ -6,7 +6,16 @@
  * an unrecognised table simply yields no rows, and nothing here throws.
  */
 
-import type { DaemonRepo, DaemonSession, DaemonStatus, DaemonWorkspace, Savings, SavingsBucket } from "./types.ts"
+import type {
+  AnalyzeKind,
+  DaemonRepo,
+  DaemonSession,
+  DaemonStatus,
+  DaemonWorkspace,
+  Savings,
+  SavingsBucket,
+  WorkspaceDeclaration,
+} from "./types.ts"
 
 const ANSI = new RegExp("\\u001b\\[[0-9;?]*[ -/]*[@-~]|\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)", "g")
 
@@ -193,4 +202,33 @@ export function errorMessage(stderr: string, stdout: string, fallback = "command
   if (!source) return fallback
   const line = source.split("\n").find((l) => l.trim().length > 0) ?? fallback
   return line.replace(/^Error:\s*/i, "").trim()
+}
+
+/** Parse the `gortex workspace list` table. */
+export function parseWorkspaceList(raw: string): WorkspaceDeclaration[] {
+  const lines = stripAnsi(raw).split("\n")
+  const { rows } = readTable(lines, 0)
+  return rows.map((row) => ({
+    repo: row["REPO"] ?? row["repo"] ?? "",
+    workspace: row["WORKSPACE"] ?? row["workspace"] ?? "",
+    project: row["PROJECT"] ?? row["project"] ?? "",
+    source: row["SOURCE"] ?? row["source"] ?? "",
+    path: row["PATH"] ?? row["path"] ?? "",
+  }))
+}
+
+/**
+ * Parse `gortex analyze kinds`: `name  description`, two columns separated by
+ * runs of spaces. A kind whose description starts with "Stamp" writes metadata
+ * into the graph, which the UI confirms before running.
+ */
+export function parseAnalyzeKinds(raw: string): AnalyzeKind[] {
+  const kinds: AnalyzeKind[] = []
+  for (const line of stripAnsi(raw).split("\n")) {
+    const match = /^\s*([a-z0-9_]+)\s{2,}(\S.*?)\s*$/.exec(line)
+    if (!match) continue
+    const description = match[2] ?? ""
+    kinds.push({ name: match[1] ?? "", description, writes: /^stamp\b/i.test(description) })
+  }
+  return kinds
 }

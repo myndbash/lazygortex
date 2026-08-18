@@ -7,8 +7,17 @@
  * degraded state instead of crashing the renderer.
  */
 
-import { parseDaemonStatus, parseSavings, errorMessage } from "./parse.ts"
-import type { CommandResult, DaemonStatus, GraphSummary, IndexHealth, Repo, Savings } from "./types.ts"
+import { parseAnalyzeKinds, parseDaemonStatus, parseSavings, parseWorkspaceList, errorMessage } from "./parse.ts"
+import type {
+  AnalyzeKind,
+  CommandResult,
+  DaemonStatus,
+  GraphSummary,
+  IndexHealth,
+  Repo,
+  Savings,
+  WorkspaceDeclaration,
+} from "./types.ts"
 
 const HOME = process.env["HOME"] ?? ""
 
@@ -138,7 +147,13 @@ export async function logs(tail = 200): Promise<string[]> {
   return raw.split("\n")
 }
 
-/** `workspace graph` — node/edge counts by kind and language for one repo. */
+/**
+ * `workspace graph` — node/edge counts by kind and language.
+ *
+ * The answer covers the whole index, with a `per_repo` breakdown, so it is
+ * fetched once for the process rather than once per selected repo: the call
+ * costs well over a second.
+ */
 export function graphSummary(repoPath: string): Promise<GraphSummary> {
   return json<GraphSummary>(
     ["call", "workspace", "--arg", "operation=graph", "--index", repoPath, "--format", "json"],
@@ -150,6 +165,28 @@ export function graphSummary(repoPath: string): Promise<GraphSummary> {
 export function indexHealth(repoPath: string): Promise<IndexHealth> {
   return json<IndexHealth>(["call", "workspace", "--arg", "operation=index", "--index", repoPath, "--format", "json"], {
     timeoutMs: 30_000,
+  })
+}
+
+/** `gortex workspace list` — what each repo declares, and where it declares it. */
+export async function workspaceList(): Promise<WorkspaceDeclaration[]> {
+  return parseWorkspaceList(await text(["workspace", "list"], { timeoutMs: 15_000 }))
+}
+
+/** `gortex analyze kinds` — the analyzer catalogue. */
+export async function analyzeKinds(repoPath: string): Promise<AnalyzeKind[]> {
+  return parseAnalyzeKinds(await text(["analyze", "kinds", "--index", repoPath], { timeoutMs: 20_000 }))
+}
+
+/**
+ * `gortex analyze --kind <kind>`.
+ *
+ * Results cover the whole index: `--path-prefix` does not restrict them, so the
+ * panel says so rather than pretending the output is repo-scoped.
+ */
+export function analyze(kind: string, repoPath: string, limit = 50): Promise<unknown> {
+  return json(["analyze", "--kind", kind, "--index", repoPath, "--format", "json", "--limit", String(limit)], {
+    timeoutMs: 180_000,
   })
 }
 
@@ -170,6 +207,30 @@ export function track(repoPath: string): Promise<CommandResult> {
 
 export function untrack(repoPath: string): Promise<CommandResult> {
   return run(["untrack", repoPath], { timeoutMs: 60_000 })
+}
+
+/**
+ * Re-index a repo the daemon already tracks.
+ *
+ * `track` is idempotent and re-adds the repo, which is the only lever the CLI
+ * offers for forcing a rebuild; `--wait` blocks until the graph is queryable.
+ */
+export function reindex(repoPath: string): Promise<CommandResult> {
+  return run(["track", repoPath, "--wait", "--wait-timeout", "5m"], { timeoutMs: 320_000 })
+}
+
+/** `gortex workspace set <repo> <workspace> [project]` */
+export function workspaceSet(repoPath: string, workspace: string, project?: string): Promise<CommandResult> {
+  const args = ["workspace", "set", repoPath, workspace]
+  if (project) args.push(project)
+  return run(args, { timeoutMs: 30_000 })
+}
+
+/** `gortex init <repo>` — writes MCP + instruction files into the repo. */
+export function init(repoPath: string, dryRun = false): Promise<CommandResult> {
+  const args = ["init", repoPath]
+  if (dryRun) args.push("--dry-run")
+  return run(args, { timeoutMs: 300_000 })
 }
 
 export const ENRICH_KINDS = ["churn", "blame", "coverage", "releases", "cochange"] as const

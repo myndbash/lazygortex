@@ -1,49 +1,65 @@
 /**
  * The lazydocker-style left column: every panel is always visible, the focused
  * one expands to fill the leftover height and shows its rows, the others
- * collapse to a single summary line.
+ * collapse to a summary line — or, when the terminal is too short for seven
+ * boxes, to a single borderless header row.
  */
 
 import { For, Show } from "solid-js"
-import { PANELS, PANEL_TITLES, repoRows, state, type PanelId } from "../state/store.ts"
-import { glyph, humanCount, shortPath, theme, truncate } from "./theme.ts"
+import {
+  analyzeKinds,
+  PANELS,
+  PANEL_TITLES,
+  repoRows,
+  selectPanel,
+  setCursor,
+  state,
+  type Freshness,
+  type PanelId,
+} from "../state/store.ts"
+import { c, Row, type Piece } from "./Row.tsx"
+import { glyph, humanCount, theme, truncate } from "./theme.ts"
 
 export const SIDE_WIDTH = 38
-const COLLAPSED_HEIGHT = 3
+const BOXED_HEIGHT = 3
+const BARE_HEIGHT = 1
 
-export interface Row {
+/** What a freshness mark means. Rendered as the Repos panel's bottom title. */
+export const FRESHNESS: Record<Freshness, { mark: string; label: string; fg: string }> = {
+  fresh: { mark: glyph.ok, label: "index matches HEAD", fg: theme.ok },
+  stale: { mark: glyph.stale, label: "HEAD moved past the index", fg: theme.warn },
+  unversioned: { mark: glyph.unversioned, label: "not a git repo — freshness unknown", fg: theme.info },
+  unindexed: { mark: glyph.bad, label: "no index yet", fg: theme.error },
+}
+
+/** Kept short on purpose: a bottom title longer than the box is dropped. */
+export const FRESHNESS_LEGEND = ` ${FRESHNESS.fresh.mark} ok ${FRESHNESS.stale.mark} stale ${FRESHNESS.unversioned.mark} no git ${FRESHNESS.unindexed.mark} none `
+
+export interface PanelRow {
   /** left-hand label */
   text: string
-  /** right-aligned suffix, dimmed */
+  /** right-aligned suffix */
   meta?: string
   fg?: string
 }
 
-function repoGlyph(row: { stale: boolean; indexed: boolean }): { mark: string; fg: string } {
-  if (!row.indexed) return { mark: glyph.bad, fg: theme.error }
-  if (row.stale) return { mark: glyph.stale, fg: theme.warn }
-  return { mark: glyph.ok, fg: theme.ok }
-}
-
-export function panelRows(panel: PanelId): Row[] {
+export function panelRows(panel: PanelId): PanelRow[] {
   switch (panel) {
-    case "daemon": {
-      const status = state.status.data
-      if (!status) return [{ text: state.status.error ?? "loading…", fg: theme.dim }]
-      return status.fields.map(([key, value]) => ({
-        text: key,
-        meta: truncate(value, 22),
-      }))
-    }
     case "repos":
       return repoRows().map((row) => {
-        const mark = repoGlyph(row)
+        const mark = FRESHNESS[row.freshness]
         return {
           text: `${mark.mark} ${row.name}`,
           meta: row.nodes ? humanCount(row.nodes) : "—",
           fg: mark.fg,
         }
       })
+    case "analyze":
+      return analyzeKinds().map((kind) => ({
+        text: kind.name,
+        meta: kind.writes ? "writes" : "",
+        fg: kind.writes ? theme.warn : theme.text,
+      }))
     case "workspaces":
       return (state.status.data?.workspaces ?? []).map((workspace) => ({
         text: workspace.workspace,
@@ -59,6 +75,11 @@ export function panelRows(panel: PanelId): Row[] {
         text: bucket.label,
         meta: `${bucket.percent}%`,
       }))
+    case "daemon": {
+      const status = state.status.data
+      if (!status) return [{ text: state.status.error ?? "loading…", fg: theme.dim }]
+      return status.fields.map(([key, value]) => ({ text: key, meta: truncate(value, 22) }))
+    }
     case "logs":
       return [{ text: `tail ${state.logTail}`, meta: `${state.logs.data?.length ?? 0} lines` }]
   }
@@ -66,6 +87,33 @@ export function panelRows(panel: PanelId): Row[] {
 
 function summary(panel: PanelId): { text: string; fg: string } {
   switch (panel) {
+    case "repos": {
+      const rows = repoRows()
+      const stale = rows.filter((row) => row.freshness === "stale").length
+      return {
+        text: `${rows.length} tracked${stale ? ` ${glyph.bullet} ${stale} stale` : ""}`,
+        fg: stale ? theme.warn : theme.muted,
+      }
+    }
+    case "analyze": {
+      const kinds = analyzeKinds()
+      const running = state.analysis.data?.kind
+      if (state.kinds.error) return { text: state.kinds.error, fg: theme.error }
+      if (!state.kinds.data) return { text: "loading…", fg: theme.dim }
+      return {
+        text: running ? `${kinds.length} kinds ${glyph.bullet} ${running}` : `${kinds.length} kinds`,
+        fg: theme.muted,
+      }
+    }
+    case "workspaces":
+      return { text: `${state.status.data?.workspaces.length ?? 0} workspaces`, fg: theme.muted }
+    case "sessions":
+      return { text: `${state.status.data?.mcpSessions.length ?? 0} connected`, fg: theme.muted }
+    case "savings": {
+      const all = state.savings.data?.buckets.find((bucket) => bucket.label === "All time")
+      if (!all) return { text: state.savings.data ? "no data" : "loading…", fg: theme.dim }
+      return { text: `${all.percent}% saved ${glyph.bullet} $${all.usd}`, fg: theme.ok }
+    }
     case "daemon": {
       const status = state.status.data
       if (state.status.error && !status) return { text: state.status.error, fg: theme.error }
@@ -73,30 +121,18 @@ function summary(panel: PanelId): { text: string; fg: string } {
       if (!status.running) return { text: "stopped", fg: theme.error }
       return { text: `${status.state ?? "running"} ${glyph.bullet} ${status.uptime ?? ""}`, fg: theme.ok }
     }
-    case "repos": {
-      const rows = repoRows()
-      const stale = rows.filter((row) => row.stale).length
-      return {
-        text: `${rows.length} tracked${stale ? ` ${glyph.bullet} ${stale} stale` : ""}`,
-        fg: stale ? theme.warn : theme.muted,
-      }
-    }
-    case "workspaces": {
-      const workspaces = state.status.data?.workspaces ?? []
-      return { text: `${workspaces.length} workspaces`, fg: theme.muted }
-    }
-    case "sessions": {
-      const sessions = state.status.data?.mcpSessions ?? []
-      return { text: `${sessions.length} connected`, fg: theme.muted }
-    }
-    case "savings": {
-      const all = state.savings.data?.buckets.find((bucket) => bucket.label === "All time")
-      if (!all) return { text: state.savings.data ? "no data" : "loading…", fg: theme.dim }
-      return { text: `${all.percent}% saved ${glyph.bullet} $${all.usd}`, fg: theme.ok }
-    }
     case "logs":
       return { text: `${state.logs.data?.length ?? 0} lines buffered`, fg: theme.muted }
   }
+}
+
+function rowParts(row: PanelRow, width: number, selected: boolean, active: boolean): Piece[] {
+  const meta = row.meta ?? ""
+  const label = truncate(row.text, Math.max(4, width - meta.length - 1))
+  const pad = " ".repeat(Math.max(1, width - label.length - meta.length))
+  const bg = selected ? (active ? theme.activeSelectionBg : theme.selectionBg) : undefined
+  const fg = selected ? theme.selectionFg : (row.fg ?? theme.text)
+  return [c(fg, label, { bg }), c(theme.dim, pad, { bg }), c(selected ? theme.selectionFg : theme.dim, meta, { bg })]
 }
 
 function PanelList(props: { panel: PanelId; capacity: number }) {
@@ -119,62 +155,74 @@ function PanelList(props: { panel: PanelId; capacity: number }) {
       <For each={visible()}>
         {(row, index) => {
           const absolute = () => start() + index()
-          const selected = () => absolute() === cursor()
-          const width = SIDE_WIDTH - 4
-          const meta = row.meta ?? ""
-          const label = truncate(row.text, Math.max(4, width - meta.length - 1))
-          const pad = " ".repeat(Math.max(1, width - label.length - meta.length))
           return (
-            <text
-              bg={selected() ? (state.focus === "side" ? theme.activeSelectionBg : theme.selectionBg) : undefined}
-              fg={selected() ? theme.selectionFg : (row.fg ?? theme.text)}
-              style={{ flexShrink: 0 }}
+            <box
+              style={{ height: 1, flexShrink: 0 }}
+              onMouseDown={() => {
+                selectPanel(props.panel)
+                setCursor(props.panel, absolute())
+              }}
             >
-              {label}
-              {pad}
-              {meta}
-            </text>
+              <Row parts={rowParts(row, SIDE_WIDTH - 4, absolute() === cursor(), state.focus === "side")} />
+            </box>
           )
         }}
       </For>
       <Show when={rows().length > props.capacity}>
-        <text fg={theme.dim}>
-          {glyph.down} {rows().length - start() - Math.max(1, props.capacity)} more
-        </text>
+        <text fg={theme.dim}>{`${glyph.down} ${rows().length - start() - Math.max(1, props.capacity)} more`}</text>
       </Show>
     </box>
   )
 }
 
-export function SidePanel(props: { capacity: number }) {
+export function SidePanel(props: { capacity: number; compact: boolean }) {
   return (
     <box style={{ width: SIDE_WIDTH, flexDirection: "column", flexShrink: 0 }}>
       <For each={PANELS}>
         {(panel, index) => {
           const focused = () => state.panel === panel
           const info = () => summary(panel)
+          const title = `${index() + 1} ${PANEL_TITLES[panel]}`
+
           return (
-            <box
-              title={` ${index() + 1} ${PANEL_TITLES[panel]} `}
-              titleColor={focused() ? theme.borderFocus : theme.muted}
-              border
-              borderStyle="rounded"
-              borderColor={focused() ? theme.borderFocus : theme.border}
-              style={{
-                flexDirection: "column",
-                backgroundColor: theme.panel,
-                paddingLeft: 1,
-                paddingRight: 1,
-                flexGrow: focused() ? 1 : 0,
-                flexShrink: focused() ? 1 : 0,
-                height: focused() ? undefined : COLLAPSED_HEIGHT,
-                minHeight: focused() ? 4 : COLLAPSED_HEIGHT,
-              }}
+            <Show
+              when={focused() || !props.compact}
+              fallback={
+                <box style={{ height: BARE_HEIGHT, flexShrink: 0 }} onMouseDown={() => selectPanel(panel)}>
+                  <Row
+                    parts={[
+                      c(theme.muted, ` ${title.padEnd(15)}`),
+                      c(info().fg, truncate(info().text, SIDE_WIDTH - 18)),
+                    ]}
+                  />
+                </box>
+              }
             >
-              <Show when={focused()} fallback={<text fg={info().fg}>{truncate(info().text, SIDE_WIDTH - 4)}</text>}>
-                <PanelList panel={panel} capacity={props.capacity} />
-              </Show>
-            </box>
+              <box
+                title={` ${title} `}
+                titleColor={focused() ? theme.borderFocus : theme.muted}
+                bottomTitle={focused() && panel === "repos" ? FRESHNESS_LEGEND : undefined}
+                bottomTitleAlignment="center"
+                border
+                borderStyle="rounded"
+                borderColor={focused() ? theme.borderFocus : theme.border}
+                onMouseDown={() => selectPanel(panel)}
+                style={{
+                  flexDirection: "column",
+                  backgroundColor: theme.panel,
+                  paddingLeft: 1,
+                  paddingRight: 1,
+                  flexGrow: focused() ? 1 : 0,
+                  flexShrink: focused() ? 1 : 0,
+                  height: focused() ? undefined : BOXED_HEIGHT,
+                  minHeight: focused() ? 4 : BOXED_HEIGHT,
+                }}
+              >
+                <Show when={focused()} fallback={<text fg={info().fg}>{truncate(info().text, SIDE_WIDTH - 4)}</text>}>
+                  <PanelList panel={panel} capacity={props.capacity} />
+                </Show>
+              </box>
+            </Show>
           )
         }}
       </For>
