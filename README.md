@@ -1,5 +1,8 @@
 # lazygortex
 
+<!-- markdownlint-disable-next-line MD013 -->
+<img src="https://raw.githubusercontent.com/myndbash/lazygortex/main/.github/assets/built-with-love-and-simulated-intelligence.png" alt="Built with love and simulated intelligence" align="right" width="132">
+
 [![CI](https://github.com/myndbash/lazygortex/actions/workflows/ci.yml/badge.svg)](https://github.com/myndbash/lazygortex/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/lazygortex)](https://www.npmjs.com/package/lazygortex)
 [![licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
@@ -9,7 +12,9 @@ A terminal UI for the Gortex code-graph daemon, in the spirit of
 [lazydocker](https://github.com/jesseduffield/lazydocker): a column of always-visible panels on the
 left, a detail pane on the right, one keystroke per action — and the mouse works too.
 
-```
+<br clear="right">
+
+```text
  lazygortex │ ● daemon ready · up 4h26m                      5 repos · 9 sessions · v0.63.3
 ╭─ 1 Repos ──────────────────────────╮╭─ emc2 · ~/Work/emc2 ─────────────────────────────────────────╮
 │ ◌ .config                   181.0k ││ ── emc2                                                      │
@@ -43,13 +48,13 @@ left, a detail pane on the right, one keystroke per action — and the mouse wor
 
 ## What it shows
 
-| Panel          | Contents                                                                | Source                                             |
-| -------------- | ----------------------------------------------------------------------- | -------------------------------------------------- |
-| **Repos**      | tracked repos, freshness, branch, counts, and a per-repo graph breakdown | `repos --json`, `daemon status`, `workspace graph`  |
-| **Workspaces** | workspace rollups plus what each repo declares, and where               | `daemon status`, `workspace list`                  |
-| **Projects**   | repos grouped by the project slug they declare, with their members      | `workspace list`, `daemon status`                  |
-| **Sessions**   | connected MCP clients, versions and working directories                 | `daemon status`                                    |
-| **Savings**    | the token-savings dashboard                                             | `savings`                                          |
+| Panel          | Contents                                                                 | Source                                             |
+| -------------- | ------------------------------------------------------------------------ | -------------------------------------------------- |
+| **Repos**      | tracked repos, freshness, branch, counts, and a per-repo graph breakdown | `repos --json`, `daemon status`, `workspace graph` |
+| **Workspaces** | workspace rollups plus what each repo declares, and where                | `daemon status`, `workspace list`                  |
+| **Projects**   | repos grouped by the project slug they declare, with their members       | `workspace list`, `daemon status`                  |
+| **Sessions**   | connected MCP clients, versions and working directories                  | `daemon status`                                    |
+| **Savings**    | the token-savings dashboard                                              | `savings`                                          |
 | **Daemon**     | pid, socket, uptime, memory, index health, the tracked-repo roster       | `daemon status`, `workspace index`                 |
 | **Logs**       | the daemon log, parsed and level-coloured, sticky to the bottom          | `daemon logs`                                      |
 
@@ -59,27 +64,28 @@ box-drawing tables, the same shape the `gortex` CLI prints.
 Daemon and Logs sit at the end of the column, where the plumbing belongs.
 
 Everything is read through the `gortex` CLI — no private protocol, no socket handling. Reads that
-have a `--json` flag use it; `daemon status` and `workspace list` are parsed from their tables by [`src/gortex/parse.ts`](src/gortex/parse.ts), forgivingly: an unknown key still
-shows up, an unrecognised table simply yields no rows, and a stopped daemon renders as a stopped
-daemon rather than an exception.
+have a `--json` flag use it; `daemon status` and `workspace list` are parsed from their tables by
+[`src/gortex/parse.ts`](src/gortex/parse.ts), forgivingly: an unknown key still shows up, an
+unrecognised table simply yields no rows, and a stopped daemon renders as a stopped daemon rather
+than an exception.
 
 ## Colour
 
 Colour is signal, not decoration: structure is drawn in greys, and a hue is spent only where it
 tells you something.
 
-| Where                        | What the colour means                                                     |
-| ---------------------------- | ------------------------------------------------------------------------- |
-| repository marks             | freshness — see below                                                     |
-| counts (nodes, files, edges) | magnitude against the largest repo, so the heavyweight reads as one        |
-| `last indexed`, log times    | recency: within the hour, today, this week, older                          |
-| daemon state                 | `ready` green, warming up or indexing amber, stopped or failed red         |
-| health score, savings share  | good / borderline / bad thresholds                                        |
-| `edges ok`, `regressions`    | a flag that should be true, a count that should be zero                    |
-| session `cwd`                | green inside a tracked repo, amber outside one                            |
-| branches                     | `main`/`master` quiet, a topic branch highlighted                          |
-| log lines                    | level colours the level; only warnings and errors colour the message       |
-| a missing value              | always dim, so `—` never competes with real data                          |
+| Where                        | What the colour means                                                |
+| ---------------------------- | -------------------------------------------------------------------- |
+| repository marks             | freshness — see below                                                |
+| counts (nodes, files, edges) | magnitude against the largest repo, so the heavyweight reads as one  |
+| `last indexed`, log times    | recency: within the hour, today, this week, older                    |
+| daemon state                 | `ready` green, warming up or indexing amber, stopped or failed red   |
+| health score, savings share  | good / borderline / bad thresholds                                   |
+| `edges ok`, `regressions`    | a flag that should be true, a count that should be zero              |
+| session `cwd`                | green inside a tracked repo, amber outside one                       |
+| branches                     | `main`/`master` quiet, a topic branch highlighted                    |
+| log lines                    | level colours the level; only warnings and errors colour the message |
+| a missing value              | always dim, so `—` never competes with real data                     |
 
 A caveat worth knowing if you extend the UI: OpenTUI 0.5.3 drops colour on inline text nodes —
 `<span fg>`, `<b fg>` and custom `TextNodeRenderable`s all render in the default foreground — so
@@ -89,12 +95,12 @@ every rule in the table above and is unit-tested.
 
 ## Repository marks
 
-| Mark | Meaning                                                                            |
-| ---- | ---------------------------------------------------------------------------------- |
-| `●`  | fresh — the index matches HEAD                                                     |
-| `▲`  | stale — HEAD has moved past the indexed commit; press `R` to re-index               |
-| `◌`  | no git — the directory is not a git repository, so freshness cannot be determined   |
-| `○`  | unindexed — the daemon has no index for it yet                                      |
+| Mark | Meaning                                                                           |
+| ---- | --------------------------------------------------------------------------------- |
+| `●`  | fresh — the index matches HEAD                                                    |
+| `▲`  | stale — HEAD has moved past the indexed commit; press `R` to re-index             |
+| `◌`  | no git — the directory is not a git repository, so freshness cannot be determined |
+| `○`  | unindexed — the daemon has no index for it yet                                    |
 
 The CLI reports a non-git directory (`~/.config`, say) as permanently "stale" because it has no
 HEAD to compare against. lazygortex separates that case out, so `▲` always means something you can
@@ -148,10 +154,10 @@ daemon is not running, the Daemon panel says so and `s` starts it.
 
 There is no config file. Two environment variables:
 
-| Variable                | Effect                                                                       |
-| ----------------------- | ---------------------------------------------------------------------------- |
-| `GORTEX_BIN`            | path to the gortex binary (default: `PATH`, then `~/.local/bin/gortex`)       |
-| `LAZYGORTEX_STATE_FILE` | where the remembered view lives; `off` disables writing it entirely           |
+| Variable                | Effect                                                                  |
+| ----------------------- | ----------------------------------------------------------------------- |
+| `GORTEX_BIN`            | path to the gortex binary (default: `PATH`, then `~/.local/bin/gortex`) |
+| `LAZYGORTEX_STATE_FILE` | where the remembered view lives; `off` disables writing it entirely     |
 
 `NO_COLOR` is not honoured yet: colour is how this UI encodes freshness, severity and magnitude, and
 a monochrome mode is a design job rather than a switch. The glyph marks (`●▲◌○`) stay legible
@@ -163,34 +169,34 @@ Press `?` for the full list, which is generated from the same table the key hand
 
 ### Global
 
-| Key           | Action                    |
-| ------------- | ------------------------- |
-| `1` … `7`     | jump straight to a panel  |
-| `tab` / `[`   | next / previous panel     |
-| `j` `k` / ↑ ↓ | move the selection        |
-| `PgUp` `PgDn` | page                      |
-| `g` `G`       | top / bottom              |
-| `enter` / `l` | focus the detail pane     |
-| `esc` / `h`   | back to the panel list    |
-| `r`           | refresh this panel        |
-| `ctrl+r`      | refresh everything        |
-| `?`           | help                      |
-| `q`           | quit                      |
+| Key           | Action                   |
+| ------------- | ------------------------ |
+| `1` … `7`     | jump straight to a panel |
+| `tab` / `[`   | next / previous panel    |
+| `j` `k` / ↑ ↓ | move the selection       |
+| `PgUp` `PgDn` | page                     |
+| `g` `G`       | top / bottom             |
+| `enter` / `l` | focus the detail pane    |
+| `esc` / `h`   | back to the panel list   |
+| `r`           | refresh this panel       |
+| `ctrl+r`      | refresh everything       |
+| `?`           | help                     |
+| `q`           | quit                     |
 
 With the detail pane focused, `j`/`k` and the page keys scroll it.
 
 ### Repos
 
-| Key | Action                                                                       |
-| --- | ---------------------------------------------------------------------------- |
-| `t` | track a repository — refuses a path the daemon already tracks                 |
-| `u` | untrack the selected repository (asks first)                                 |
+| Key | Action                                                                            |
+| --- | --------------------------------------------------------------------------------- |
+| `t` | track a repository — refuses a path the daemon already tracks                     |
+| `u` | untrack the selected repository (asks first)                                      |
 | `R` | re-index: `gortex track --wait`, the lever that clears a stale index (asks first) |
-| `e` | run an enrichment (churn, blame, coverage, releases, cochange)                |
-| `W` | set the repo's `workspace[/project]` in its `.gortex.yaml`                    |
-| `i` | `gortex init` — write MCP and instruction files into the repo (asks first)    |
-| `/` | filter by name or path                                                       |
-| `y` | yank the repository path to the clipboard                                    |
+| `e` | run an enrichment (churn, blame, coverage, releases, cochange)                    |
+| `W` | set the repo's `workspace[/project]` in its `.gortex.yaml`                        |
+| `i` | `gortex init` — write MCP and instruction files into the repo (asks first)        |
+| `/` | filter by name or path                                                            |
+| `y` | yank the repository path to the clipboard                                         |
 
 ### Daemon
 
@@ -207,7 +213,8 @@ With the detail pane focused, `j`/`k` and the page keys scroll it.
 | --------- | ----------------------- |
 | `+` / `-` | tail more / fewer lines |
 
-Destructive actions — stop, restart, untrack, re-index, init — ask for confirmation first. Every command reports its outcome, duration and stderr on the message line.
+Destructive actions — stop, restart, untrack, re-index, init — ask for confirmation first. Every
+command reports its outcome, duration and stderr on the message line.
 
 ### Mouse
 
@@ -216,7 +223,7 @@ menu entries in a dialog to choose them. The wheel scrolls the detail pane.
 
 ## Workspaces and projects
 
-Neither is created; both are *declared*. Two repos that name the same `workspace:` slug in their
+Neither is created; both are _declared_. Two repos that name the same `workspace:` slug in their
 `.gortex.yaml` share one graph boundary, and cross-repo contract matching stops at that boundary.
 Within a workspace, the `project:` slug is the finer grouping — usually one repo, but a linked git
 worktree or a split front end and back end land several repos under one project.
@@ -229,7 +236,7 @@ worktree or a split front end and back end land several repos under one project.
 
 ## Layout of the code
 
-```
+```text
 src/
   index.tsx           entry point, --help/--version
   gortex/
@@ -305,6 +312,11 @@ bun install && bun run check   # typecheck + format + tests, exactly what CI run
 
 [OpenTUI](https://github.com/sst/opentui) (Zig renderer, TypeScript bindings) with the Solid.js
 binding, on [Bun](https://bun.sh).
+
+**Built with love and simulated intelligence.** The implementation was written in collaboration with
+an AI agent and reviewed screen by screen. Everything it claims is checked: panels, keys, colours and
+the parsers are covered by the test suite, and each install path was installed and run before it was
+documented.
 
 ## Licence
 

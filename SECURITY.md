@@ -20,8 +20,8 @@ Being a front end for a local daemon, the honest scope matters more than a promi
   repository path and the log tail size. Set `LAZYGORTEX_STATE_FILE=off` to disable that, or to a
   path to move it.
 - **Everything else that writes asks first.** Untracking a repository, stopping or restarting the
-  daemon, re-indexing, and `gortex init` (which writes MCP and instruction files *into your
-  repository*) all go through a confirmation dialog.
+  daemon, re-indexing, and `gortex init` (which writes MCP and instruction files _into your
+  repository_) all go through a confirmation dialog.
 - **Clipboard**: pressing `y` shells out to `wl-copy`, `pbcopy`, `xclip` or `xsel` if present, and
   otherwise emits an OSC 52 sequence, which your terminal may or may not honour.
 
