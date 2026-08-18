@@ -1,9 +1,10 @@
 /** Top-level layout, key routing and the polling lifecycle. */
 
-import { Show, createEffect, createMemo, onCleanup, onMount } from "solid-js"
+import { ErrorBoundary, Show, createEffect, createMemo, onCleanup, onMount } from "solid-js"
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import type { KeyEvent } from "@opentui/core"
 import {
+  checkBinary,
   clearMessage,
   closeOverlay,
   listLength,
@@ -20,6 +21,7 @@ import { stateColor } from "./semantics.ts"
 import { MainPane } from "./MainPane.tsx"
 import { Overlays } from "./Overlays.tsx"
 import { SidePanel } from "./SidePanel.tsx"
+import { Setup } from "./Setup.tsx"
 import { StatusBar } from "./StatusBar.tsx"
 import { c, Row } from "./Row.tsx"
 import { glyph, theme, truncate } from "./theme.ts"
@@ -33,6 +35,8 @@ const FOCUS_MIN_ROWS = 6
 function Header(props: { width: number }) {
   const status = () => state.status.data
   const health = () => {
+    if (state.binary.ok === false) return { mark: glyph.bad, text: "gortex not found", fg: theme.error }
+    if (state.binary.ok === null) return { mark: glyph.warn, text: "starting…", fg: theme.dim }
     if (state.status.error && !status()) return { mark: glyph.bad, text: "unreachable", fg: theme.error }
     if (!status()) return { mark: glyph.warn, text: "connecting…", fg: theme.dim }
     if (!status()?.running) return { mark: glyph.bad, text: "stopped", fg: theme.error }
@@ -61,11 +65,11 @@ function Header(props: { width: number }) {
       />
       <Row
         parts={[
-          c(stale() ? theme.warn : theme.muted, `${status()?.repos.length ?? 0} repos`),
+          state.binary.ok !== true ? "" : c(stale() ? theme.warn : theme.muted, `${status()?.repos.length ?? 0} repos`),
           stale() ? c(theme.warn, ` (${stale()} stale)`) : "",
-          c(theme.dim, `  ${glyph.bullet}  `),
-          c(theme.muted, `${status()?.mcpSessions.length ?? 0} sessions`),
-          c(theme.dim, status()?.version ? `  ${glyph.bullet}  ${status()?.version}` : ""),
+          state.binary.ok !== true ? "" : c(theme.dim, `  ${glyph.bullet}  `),
+          state.binary.ok !== true ? "" : c(theme.muted, `${status()?.mcpSessions.length ?? 0} sessions`),
+          state.binary.ok === true && status()?.version ? c(theme.dim, `  ${glyph.bullet}  ${status()?.version}`) : "",
         ]}
       />
     </box>
@@ -127,17 +131,28 @@ export function App() {
   })
 
   useKeyboard((key) => {
+    if (state.binary.ok === false) {
+      const id = keyId(key)
+      if (id === "q" || id === "ctrl+c") setState("quitting", true)
+      if (id === "r") void start()
+      return
+    }
     if (routeOverlayKey(key)) return
     if (state.message && Date.now() - state.message.at > 400) clearMessage()
     handleKey(key)
   })
 
-  onMount(() => {
+  /** Probe the CLI first; every panel is meaningless without it. */
+  async function start(): Promise<void> {
+    if (!(await checkBinary())) return
     // the saved panel/selection can only be restored once the lists exist
-    void refresh
-      .fast()
-      .then(restoreView)
-      .then(() => refresh.all())
+    await refresh.fast()
+    await restoreView()
+    await refresh.all()
+  }
+
+  onMount(() => {
+    void start()
     const stop = startPolling()
     onCleanup(stop)
   })
@@ -170,10 +185,22 @@ export function App() {
       }}
     >
       <Header width={dimensions().width} />
-      <box style={{ flexGrow: 1, flexDirection: "row" }}>
-        <SidePanel capacity={capacity()} compact={compact()} />
-        <MainPane />
-      </box>
+      <Show when={state.binary.ok !== false} fallback={<Setup />}>
+        <ErrorBoundary
+          fallback={(error: unknown) => (
+            <box style={{ flexGrow: 1, flexDirection: "column", padding: 1 }}>
+              <text fg={theme.error}>{`${glyph.bad} a panel failed to render`}</text>
+              <text fg={theme.muted}>{error instanceof Error ? error.message : String(error)}</text>
+              <text fg={theme.dim}>press q to quit, or report this at the issue tracker</text>
+            </box>
+          )}
+        >
+          <box style={{ flexGrow: 1, flexDirection: "row" }}>
+            <SidePanel capacity={capacity()} compact={compact()} />
+            <MainPane />
+          </box>
+        </ErrorBoundary>
+      </Show>
       <StatusBar width={dimensions().width} />
       <Show when={state.overlay}>
         <Overlays />

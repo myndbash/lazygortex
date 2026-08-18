@@ -69,7 +69,16 @@ export type Overlay =
       onPick: (value: string) => void
     }
 
+export interface Binary {
+  /** null while the probe is still running */
+  ok: boolean | null
+  path: string
+  version?: string
+  reason?: string
+}
+
 export interface State {
+  binary: Binary
   panel: PanelId
   /** which column has the keyboard: the panel list or the detail pane */
   focus: "side" | "main"
@@ -102,6 +111,7 @@ function noFilters(): Record<PanelId, string> {
 
 function initialState(): State {
   return {
+    binary: { ok: null, path: gortex.GORTEX_BIN },
     panel: "repos",
     focus: "side",
     cursor: zeroCursors(),
@@ -196,6 +206,13 @@ async function runLoad<K extends SlotKey>(key: K, fetcher: () => Promise<State[K
 /** Any tracked repo works as the entry point for index-wide calls. */
 function anyRepoPath(): string | null {
   return state.repos.data?.[0]?.path ?? state.status.data?.repos[0]?.path ?? null
+}
+
+/** Probe the CLI; everything else is pointless until this succeeds. */
+export async function checkBinary(): Promise<boolean> {
+  const result = await gortex.probe()
+  setState("binary", { ok: result.ok, path: gortex.GORTEX_BIN, version: result.version, reason: result.reason })
+  return result.ok
 }
 
 export const refresh = {

@@ -15,7 +15,7 @@ import { App } from "../src/ui/App.tsx"
 import { projectRows, repoRows } from "../src/state/store.ts"
 import { theme } from "../src/ui/theme.ts"
 import { GORTEX_BIN } from "../src/gortex/client.ts"
-import { refresh, resetState, restoreView, state } from "../src/state/store.ts"
+import { refresh, resetState, restoreView, setState, state } from "../src/state/store.ts"
 
 const available = await Bun.file(GORTEX_BIN)
   .exists()
@@ -269,6 +269,23 @@ maybe("lazygortex", () => {
 
     await setup.waitForFrame((frame) => frame.includes("Daemon logs"), PASSES)
     expect(state.logs.data?.length ?? 0).toBeGreaterThan(0)
+  })
+
+  test("a machine without gortex gets an explanation, not seven broken panels", async () => {
+    setState("binary", { ok: false, path: "/nowhere/gortex", reason: "not found" })
+    await setup.flush()
+    await setup.renderOnce()
+
+    const frame = setup.captureCharFrame()
+    expect(frame).toContain("gortex not found")
+    expect(frame).toContain("/nowhere/gortex")
+    expect(frame).toContain("GORTEX_BIN=")
+    expect(frame).toContain("check again")
+    // the panel column is replaced, not merely covered
+    expect(frame).not.toContain("── index size")
+
+    setState("binary", { ok: true, path: "/usr/bin/gortex" })
+    await setup.flush()
   })
 
   test("the last view is restored, and restoring does not overwrite what it read", async () => {

@@ -1,5 +1,9 @@
 # lazygortex
 
+[![CI](https://github.com/myndbash/lazygortex/actions/workflows/ci.yml/badge.svg)](https://github.com/myndbash/lazygortex/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/lazygortex)](https://www.npmjs.com/package/lazygortex)
+[![licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+
 A terminal UI for the Gortex code-graph daemon, in the spirit of
 [lazygit](https://github.com/jesseduffield/lazygit) and
 [lazydocker](https://github.com/jesseduffield/lazydocker): a column of always-visible panels on the
@@ -98,29 +102,60 @@ act on. The legend rides on the Repos panel's bottom border, and `?` spells it o
 
 ## Requirements
 
-- [Bun](https://bun.sh) 1.3+
-- the `gortex` binary on `PATH` (or `GORTEX_BIN` pointing at it)
+- the `gortex` CLI, with a daemon you can reach (`gortex daemon status`)
+- for the npm install: [Bun](https://bun.sh) 1.3+ — the release binaries need nothing at all
 
-## Running
+lazygortex reads and drives that CLI; it is not useful without it. If the binary cannot be found it
+says so on start-up, with the path it tried and how to point it somewhere else.
+
+## Install
+
+**A release binary** — one file, no runtime:
 
 ```bash
+# pick your platform: linux-x64, linux-arm64, darwin-x64, darwin-arm64
+curl -fsSLO https://github.com/myndbash/lazygortex/releases/latest/download/lazygortex-linux-x64
+curl -fsSL  https://github.com/myndbash/lazygortex/releases/latest/download/SHA256SUMS | grep linux-x64 | shasum -a 256 -c -
+chmod +x lazygortex-linux-x64 && sudo mv lazygortex-linux-x64 /usr/local/bin/lazygortex
+```
+
+**With Bun**, if you already have it:
+
+```bash
+bunx lazygortex          # one-off
+bun add -g lazygortex    # or install it
+```
+
+**From source**:
+
+```bash
+git clone https://github.com/myndbash/lazygortex && cd lazygortex
 bun install
-bun start            # inside the repo
-bin/lazygortex       # from anywhere: the launcher wires up the Solid transform itself
+bun start                # or bin/lazygortex, which works from any directory
+bun run build            # dist/cli.js for npm, dist/lazygortex as a standalone binary
 ```
 
-Build a standalone executable (no Bun needed to run it):
+## First run
 
 ```bash
-bun run build        # -> dist/lazygortex
+lazygortex
 ```
 
-> The repo's `bunfig.toml` preloads the Solid transform for development. Run the compiled binary
-> from another directory, or it will try to load that preload and refuse to start.
+It opens on the Repos panel with whatever your daemon tracks. `?` lists every key, `q` quits. If the
+daemon is not running, the Daemon panel says so and `s` starts it.
 
-lazygortex reopens on the panel and repository you left it on. That lives in
-`$XDG_STATE_HOME/lazygortex/state.json`; set `LAZYGORTEX_STATE_FILE` to move it, or to `off` to
-disable the feature.
+### Configuration
+
+There is no config file. Two environment variables:
+
+| Variable                | Effect                                                                       |
+| ----------------------- | ---------------------------------------------------------------------------- |
+| `GORTEX_BIN`            | path to the gortex binary (default: `PATH`, then `~/.local/bin/gortex`)       |
+| `LAZYGORTEX_STATE_FILE` | where the remembered view lives; `off` disables writing it entirely           |
+
+`NO_COLOR` is not honoured yet: colour is how this UI encodes freshness, severity and magnitude, and
+a monochrome mode is a design job rather than a switch. The glyph marks (`●▲◌○`) stay legible
+without it.
 
 ## Keys
 
@@ -210,6 +245,7 @@ src/
     MainPane.tsx      the per-panel detail views
     Overlays.tsx      help, confirm, prompt and menu modals
     StatusBar.tsx     busy spinner, messages, contextual key hints
+    Setup.tsx         the screen a machine without the gortex CLI gets
     Row.tsx           multi-coloured text rows (and the row highlight)
     semantics.ts      what a colour means: freshness, severity, magnitude, recency
     Table.tsx         box-drawing tables sized to the pane
@@ -248,7 +284,28 @@ when no `gortex` binary is present.
 rows is a CLI job, not a dashboard one. `gortex explore` / context assembly has the same problem —
 it builds a working set for a coding agent, a per-task answer rather than a state you watch.
 
+## What it does to your machine
+
+It runs one binary — `gortex` — as a subprocess, with arguments passed as an argv array and never
+through a shell. It makes no network calls of its own and collects nothing. The only file it writes
+unprompted is the remembered view at `$XDG_STATE_HOME/lazygortex/state.json`; everything else that
+writes — untrack, re-index, `gortex init`, stopping the daemon — asks first. [SECURITY.md](SECURITY.md)
+spells this out in full.
+
+## Contributing
+
+Bug reports and panel ideas are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the dev loop and
+the house rules, and [CHANGELOG.md](CHANGELOG.md) for what changed when.
+
+```bash
+bun install && bun run check   # typecheck + format + tests, exactly what CI runs
+```
+
 ## Built with
 
 [OpenTUI](https://github.com/sst/opentui) (Zig renderer, TypeScript bindings) with the Solid.js
-binding, on Bun.
+binding, on [Bun](https://bun.sh).
+
+## Licence
+
+[MIT](LICENSE) © myndbash

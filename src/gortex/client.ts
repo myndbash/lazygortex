@@ -113,6 +113,23 @@ async function text(args: string[], options?: RunOptions): Promise<string> {
   return result.stdout
 }
 
+/**
+ * Is the gortex binary reachable and runnable?
+ *
+ * Checked once at start-up so a machine without gortex gets an explanation
+ * instead of seven panels of spawn errors.
+ */
+export async function probe(): Promise<{ ok: boolean; version?: string; reason?: string }> {
+  const result = await run(["version"], { timeoutMs: 10_000 })
+  if (result.ok) {
+    const version = result.stdout.trim().split("\n")[0]
+    return { ok: true, version: version || undefined }
+  }
+  const reason =
+    result.stderr.includes("ENOENT") || result.code === -1 ? "not found" : errorMessage(result.stderr, result.stdout)
+  return { ok: false, reason }
+}
+
 // ---------------------------------------------------------------------------
 // reads
 // ---------------------------------------------------------------------------

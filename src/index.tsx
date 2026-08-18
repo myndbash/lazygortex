@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 /**
  * lazygortex — a terminal UI for the Gortex daemon, in the spirit of
  * lazygit and lazydocker.
@@ -22,7 +21,10 @@ keys:
   q           quit
 
 environment:
-  GORTEX_BIN  path to the gortex binary (default: ${GORTEX_BIN})
+  GORTEX_BIN             path to the gortex binary (default: ${GORTEX_BIN})
+  LAZYGORTEX_STATE_FILE  where the remembered view is stored; "off" disables it
+
+https://github.com/myndbash/lazygortex
 `)
   process.exit(0)
 }
