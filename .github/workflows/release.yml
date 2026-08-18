@@ -75,7 +75,7 @@ jobs:
           rm -f *.sha256
           ls -la
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           # a dispatch run has no tag ref of its own; without this the release
           # would be named after the branch
