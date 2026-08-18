@@ -6,8 +6,6 @@
 import type { KeyEvent } from "@opentui/core"
 import {
   actions,
-  analyzeKinds,
-  currentKind,
   currentRepo,
   currentWorkspace,
   cyclePanel,
@@ -19,7 +17,6 @@ import {
   openOverlay,
   PANELS,
   refresh,
-  runAnalysis,
   selectPanel,
   setState,
   state,
@@ -272,31 +269,6 @@ export function panelBindings(): Binding[] {
       },
     },
 
-    // ----- analyze -----
-    {
-      keys: ["a", "return"],
-      panels: ["analyze"],
-      label: "a/↵",
-      description: "run the selected analyzer",
-      hint: true,
-      run: () => {
-        const kind = currentKind()
-        if (!kind) return notify("error", "no analyzer selected")
-        if (kind.writes) {
-          openOverlay({
-            kind: "confirm",
-            title: `Run ${kind.name}`,
-            body: `${kind.description}\n\nThis analyzer writes metadata into the graph.`,
-            confirmLabel: "run",
-            onConfirm: () => void runAnalysis(kind.name),
-          })
-          return
-        }
-        void runAnalysis(kind.name)
-      },
-    },
-    filterPrompt("analyze", "analyzers"),
-
     // ----- workspaces -----
     {
       keys: ["y"],
@@ -400,11 +372,6 @@ export function handleKey(key: KeyEvent): boolean {
     }
   }
   return false
-}
-
-/** Analyzer count, used by the panel summary. */
-export function analyzerCount(): number {
-  return analyzeKinds().length
 }
 
 // The main pane owns a scrollbox; the keymap talks to it through this hook so

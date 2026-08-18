@@ -29,14 +29,18 @@ declare module "@opentui/solid" {
 export interface Piece {
   text: string
   fg?: string
-  bg?: string
   bold?: boolean
 }
 
 export type MaybePiece = Piece | false | null | undefined | ""
 
-/** A coloured fragment of a row. */
-export function c(fg: string, text: string | number, options: { bg?: string; bold?: boolean } = {}): Piece {
+/**
+ * A coloured fragment of a row.
+ *
+ * Fragments carry no background: OpenTUI ignores `bg` on a text node, so a
+ * highlight has to be set on the row itself via `<Row bg>`.
+ */
+export function c(fg: string, text: string | number, options: { bold?: boolean } = {}): Piece {
   return { text: String(text), fg, ...options }
 }
 
@@ -47,11 +51,7 @@ export function Row(props: { parts: MaybePiece[]; bg?: string }) {
     <text bg={props.bg} style={{ flexShrink: 0 }}>
       <For each={parts()}>
         {(part) => (
-          <styled_span
-            fg={part.fg ?? theme.text}
-            bg={part.bg ?? props.bg}
-            attributes={part.bold ? TextAttributes.BOLD : undefined}
-          >
+          <styled_span fg={part.fg ?? theme.text} attributes={part.bold ? TextAttributes.BOLD : undefined}>
             {part.text}
           </styled_span>
         )}

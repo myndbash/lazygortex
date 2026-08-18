@@ -7,7 +7,6 @@
 
 import { For, Show } from "solid-js"
 import {
-  analyzeKinds,
   PANELS,
   PANEL_TITLES,
   repoRows,
@@ -54,12 +53,6 @@ export function panelRows(panel: PanelId): PanelRow[] {
           fg: mark.fg,
         }
       })
-    case "analyze":
-      return analyzeKinds().map((kind) => ({
-        text: kind.name,
-        meta: kind.writes ? "writes" : "",
-        fg: kind.writes ? theme.warn : theme.text,
-      }))
     case "workspaces":
       return (state.status.data?.workspaces ?? []).map((workspace) => ({
         text: workspace.workspace,
@@ -95,16 +88,6 @@ function summary(panel: PanelId): { text: string; fg: string } {
         fg: stale ? theme.warn : theme.muted,
       }
     }
-    case "analyze": {
-      const kinds = analyzeKinds()
-      const running = state.analysis.data?.kind
-      if (state.kinds.error) return { text: state.kinds.error, fg: theme.error }
-      if (!state.kinds.data) return { text: "loading…", fg: theme.dim }
-      return {
-        text: running ? `${kinds.length} kinds ${glyph.bullet} ${running}` : `${kinds.length} kinds`,
-        fg: theme.muted,
-      }
-    }
     case "workspaces":
       return { text: `${state.status.data?.workspaces.length ?? 0} workspaces`, fg: theme.muted }
     case "sessions":
@@ -126,13 +109,18 @@ function summary(panel: PanelId): { text: string; fg: string } {
   }
 }
 
-function rowParts(row: PanelRow, width: number, selected: boolean, active: boolean): Piece[] {
+function rowParts(row: PanelRow, width: number, selected: boolean): Piece[] {
   const meta = row.meta ?? ""
   const label = truncate(row.text, Math.max(4, width - meta.length - 1))
   const pad = " ".repeat(Math.max(1, width - label.length - meta.length))
-  const bg = selected ? (active ? theme.activeSelectionBg : theme.selectionBg) : undefined
   const fg = selected ? theme.selectionFg : (row.fg ?? theme.text)
-  return [c(fg, label, { bg }), c(theme.dim, pad, { bg }), c(selected ? theme.selectionFg : theme.dim, meta, { bg })]
+  return [c(fg, label), c(theme.dim, pad), c(selected ? theme.selectionFg : theme.dim, meta)]
+}
+
+/** The highlight lives on the row, because a text node ignores `bg`. */
+function rowBackground(selected: boolean, active: boolean): string | undefined {
+  if (!selected) return undefined
+  return active ? theme.activeSelectionBg : theme.selectionBg
 }
 
 function PanelList(props: { panel: PanelId; capacity: number }) {
@@ -163,7 +151,10 @@ function PanelList(props: { panel: PanelId; capacity: number }) {
                 setCursor(props.panel, absolute())
               }}
             >
-              <Row parts={rowParts(row, SIDE_WIDTH - 4, absolute() === cursor(), state.focus === "side")} />
+              <Row
+                parts={rowParts(row, SIDE_WIDTH - 4, absolute() === cursor())}
+                bg={rowBackground(absolute() === cursor(), state.focus === "side")}
+              />
             </box>
           )
         }}

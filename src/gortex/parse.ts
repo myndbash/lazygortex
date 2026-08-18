@@ -7,7 +7,6 @@
  */
 
 import type {
-  AnalyzeKind,
   DaemonRepo,
   DaemonSession,
   DaemonStatus,
@@ -215,20 +214,4 @@ export function parseWorkspaceList(raw: string): WorkspaceDeclaration[] {
     source: row["SOURCE"] ?? row["source"] ?? "",
     path: row["PATH"] ?? row["path"] ?? "",
   }))
-}
-
-/**
- * Parse `gortex analyze kinds`: `name  description`, two columns separated by
- * runs of spaces. A kind whose description starts with "Stamp" writes metadata
- * into the graph, which the UI confirms before running.
- */
-export function parseAnalyzeKinds(raw: string): AnalyzeKind[] {
-  const kinds: AnalyzeKind[] = []
-  for (const line of stripAnsi(raw).split("\n")) {
-    const match = /^\s*([a-z0-9_]+)\s{2,}(\S.*?)\s*$/.exec(line)
-    if (!match) continue
-    const description = match[2] ?? ""
-    kinds.push({ name: match[1] ?? "", description, writes: /^stamp\b/i.test(description) })
-  }
-  return kinds
 }
