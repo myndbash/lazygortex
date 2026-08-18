@@ -11,7 +11,6 @@ import * as gortex from "../gortex/client.ts"
 import type { EnrichKind } from "../gortex/client.ts"
 import { errorMessage } from "../gortex/parse.ts"
 import type {
-  AnalyzeKind,
   CommandResult,
   DaemonStatus,
   GraphSummary,
@@ -26,12 +25,11 @@ import { loadPersisted, savePersisted } from "./persist.ts"
  * Panel order. Repos leads because it is what people come for; Daemon sits
  * immediately before Logs at the end, where the plumbing belongs.
  */
-export const PANELS = ["repos", "analyze", "workspaces", "sessions", "savings", "daemon", "logs"] as const
+export const PANELS = ["repos", "workspaces", "sessions", "savings", "daemon", "logs"] as const
 export type PanelId = (typeof PANELS)[number]
 
 export const PANEL_TITLES: Record<PanelId, string> = {
   repos: "Repos",
-  analyze: "Analyze",
   workspaces: "Workspaces",
   sessions: "Sessions",
   savings: "Savings",
@@ -70,11 +68,6 @@ export type Overlay =
       onPick: (value: string) => void
     }
 
-export interface Analysis {
-  kind: string
-  result: unknown
-}
-
 export interface State {
   panel: PanelId
   /** which column has the keyboard: the panel list or the detail pane */
@@ -90,8 +83,6 @@ export interface State {
   /** index-wide health report */
   index: Async<IndexHealth>
   declarations: Async<WorkspaceDeclaration[]>
-  kinds: Async<AnalyzeKind[]>
-  analysis: Async<Analysis>
   /** label of the command currently running, if any */
   busy: string | null
   message: Message | null
@@ -121,8 +112,6 @@ function initialState(): State {
     graph: empty<GraphSummary>(),
     index: empty<IndexHealth>(),
     declarations: empty<WorkspaceDeclaration[]>(),
-    kinds: empty<AnalyzeKind[]>(),
-    analysis: empty<Analysis>(),
     busy: null,
     message: null,
     overlay: null,
@@ -155,7 +144,7 @@ export function clearMessage(): void {
 // async slots
 // ---------------------------------------------------------------------------
 
-type SlotKey = "status" | "repos" | "savings" | "logs" | "graph" | "index" | "declarations" | "kinds" | "analysis"
+type SlotKey = "status" | "repos" | "savings" | "logs" | "graph" | "index" | "declarations"
 
 /**
  * One load per slot at a time. A caller that arrives mid-flight waits for the
@@ -224,25 +213,13 @@ export const refresh = {
     if (!path) return
     await load("index", () => gortex.indexHealth(path))
   },
-  kinds: async () => {
-    const path = anyRepoPath()
-    if (!path) return
-    await load("kinds", () => gortex.analyzeKinds(path))
-  },
   /** the cheap slots, safe to poll */
   fast: async () => {
     await Promise.all([refresh.status(), refresh.repos()])
   },
   all: async () => {
     await refresh.fast()
-    await Promise.all([
-      refresh.savings(),
-      refresh.logs(),
-      refresh.declarations(),
-      refresh.graph(),
-      refresh.index(),
-      refresh.kinds(),
-    ])
+    await Promise.all([refresh.savings(), refresh.logs(), refresh.declarations(), refresh.graph(), refresh.index()])
   },
   /** whatever the visible panel needs */
   current: async () => {
@@ -254,8 +231,6 @@ export const refresh = {
       case "workspaces":
         await Promise.all([refresh.status(), refresh.declarations()])
         return
-      case "analyze":
-        return refresh.kinds()
       case "repos":
         await Promise.all([refresh.fast(), refresh.graph()])
         return
@@ -369,19 +344,6 @@ export function repoGraph(
   return entry && typeof entry === "object" ? (entry as Record<string, never>) : null
 }
 
-export function analyzeKinds(): AnalyzeKind[] {
-  const kinds = state.kinds.data ?? []
-  const needle = state.filter.analyze.trim().toLowerCase()
-  if (!needle) return kinds
-  return kinds.filter((kind) => kind.name.includes(needle) || kind.description.toLowerCase().includes(needle))
-}
-
-export function currentKind(): AnalyzeKind | null {
-  const kinds = analyzeKinds()
-  if (kinds.length === 0) return null
-  return kinds[Math.min(state.cursor.analyze, kinds.length - 1)] ?? null
-}
-
 export function workspaceNames(): string[] {
   return (state.status.data?.workspaces ?? []).map((workspace) => workspace.workspace)
 }
@@ -396,8 +358,6 @@ export function listLength(panel: PanelId): number {
   switch (panel) {
     case "repos":
       return repoRows().length
-    case "analyze":
-      return analyzeKinds().length
     case "workspaces":
       return state.status.data?.workspaces.length ?? 0
     case "sessions":
@@ -424,7 +384,6 @@ function remember(): void {
     panel: state.panel,
     repo: currentRepo()?.path,
     logTail: state.logTail,
-    analyzeKind: currentKind()?.name,
   })
 }
 
@@ -435,7 +394,6 @@ export function selectPanel(panel: PanelId): void {
   if (panel === "repos" && !state.graph.data) void refresh.graph()
   if (panel === "daemon" && !state.index.data) void refresh.index()
   if (panel === "workspaces" && !state.declarations.data) void refresh.declarations()
-  if (panel === "analyze" && !state.kinds.data) void refresh.kinds()
   remember()
 }
 
@@ -481,13 +439,6 @@ async function applyPersisted(saved: Awaited<ReturnType<typeof loadPersisted>>):
   // through selectPanel, so the restored panel loads whatever it needs
   if (saved.panel && (PANELS as readonly string[]).includes(saved.panel)) {
     selectPanel(saved.panel as PanelId)
-  }
-
-  if (saved.analyzeKind) {
-    // the catalogue has to exist before a kind can be selected in it
-    await refresh.kinds()
-    const index = analyzeKinds().findIndex((kind) => kind.name === saved.analyzeKind)
-    if (index >= 0) setState("cursor", "analyze", index)
   }
 }
 
@@ -548,27 +499,6 @@ export const actions = {
     command(`workspace set ${workspace}${project ? `/${project}` : ""}`, () =>
       gortex.workspaceSet(path, workspace, project),
     ),
-}
-
-/** Run one analyzer and keep the result for the detail pane. */
-export async function runAnalysis(kind: string): Promise<void> {
-  const path = anyRepoPath()
-  if (!path) return notify("error", "no tracked repository to analyse")
-  if (state.busy) return notify("error", `busy: ${state.busy} is still running`)
-
-  setState("busy", `analyze ${kind}`)
-  const started = performance.now()
-  try {
-    const result = await gortex.analyze(kind, path)
-    setState("analysis", { data: { kind, result }, error: null, loading: false, at: Date.now() })
-    notify("success", `analyze ${kind} ok (${((performance.now() - started) / 1000).toFixed(1)}s)`)
-  } catch (error) {
-    const text = error instanceof Error ? error.message : String(error)
-    setState("analysis", { data: null, error: `${kind}: ${text}`, loading: false, at: Date.now() })
-    notify("error", `analyze ${kind}: ${text}`)
-  } finally {
-    setState("busy", null)
-  }
 }
 
 // ---------------------------------------------------------------------------

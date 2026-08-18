@@ -84,12 +84,12 @@ maybe("lazygortex", () => {
     const frame = setup.captureCharFrame()
 
     expect(frame).toContain("lazygortex")
-    const positions = ["Repos", "Analyze", "Workspaces", "Sessions", "Savings", "Daemon", "Logs"].map((panel) =>
+    const positions = ["Repos", "Workspaces", "Sessions", "Savings", "Daemon", "Logs"].map((panel) =>
       frame.indexOf(panel),
     )
     expect(positions.every((index) => index >= 0)).toBe(true)
     // Daemon sits immediately before Logs, at the end of the column
-    expect(positions[5]).toBeLessThan(positions[6]!)
+    expect(positions[4]).toBeLessThan(positions[5]!)
     expect(state.panel).toBe("repos")
     expect(frame).toContain("freshness")
   })
@@ -114,14 +114,17 @@ maybe("lazygortex", () => {
     expect(setup.captureCharFrame()).toContain("by kind")
   })
 
-  test("tab moves to the analyze panel and lists analyzers", async () => {
+  test("tab moves to the next panel", async () => {
     setup.mockInput.pressKey("TAB")
     await setup.flush()
-    expect(state.panel).toBe("analyze")
+    expect(state.panel).toBe("workspaces")
 
-    await until(() => (state.kinds.data?.length ?? 0) > 10)
-    await setup.flush()
-    expect(setup.captureCharFrame()).toContain("run the selected analyzer")
+    await setup.waitForFrame((frame) => frame.includes("declarations"), PASSES)
+    const frame = setup.captureCharFrame()
+    // declarations render as a real box-drawing table
+    expect(frame).toContain("┌")
+    expect(frame).toContain("declared in")
+    expect(frame).toContain(".gortex.yaml")
   })
 
   test("clicking a row selects it, clicking another panel switches to it", async () => {
@@ -131,13 +134,27 @@ maybe("lazygortex", () => {
     expect(state.panel).toBe("repos")
     expect(state.cursor.repos).toBe(1)
 
-    // the Sessions box header, four boxes down the column
+    // wherever the Sessions box header happens to sit in the column
     const frame = setup.captureCharFrame().split("\n")
-    const sessionsRow = frame.findIndex((line) => line.includes("4 Sessions"))
+    const sessionsRow = frame.findIndex((line) => line.includes("Sessions"))
     expect(sessionsRow).toBeGreaterThan(0)
     setup.mockMouse.click(6, sessionsRow)
     await setup.flush()
     expect(state.panel).toBe("sessions")
+  })
+
+  test("the selected row is painted, not just marked", async () => {
+    setup.mockInput.pressKey("1")
+    await setup.flush()
+    setup.mockInput.pressKey("j")
+    await setup.flush()
+    await setup.renderOnce()
+
+    const rows = setup.captureSpans().lines
+    const painted = rows.filter((line) =>
+      line.spans.some((span) => span.bg.buffer[3] !== 0 && span.text.trim().length > 0 && span.text.includes("●")),
+    )
+    expect(painted.length).toBeGreaterThan(0)
   })
 
   test("clicking the detail pane moves the focus to it", async () => {
@@ -152,11 +169,11 @@ maybe("lazygortex", () => {
     await setup.renderOnce()
 
     const frame = setup.captureCharFrame()
-    for (const panel of ["1 Repos", "2 Analyze", "6 Daemon", "7 Logs"]) {
+    for (const panel of ["1 Repos", "2 Workspaces", "5 Daemon", "6 Logs"]) {
       expect(frame).toContain(panel)
     }
     // only the focused panel keeps its box
-    expect(frame).not.toContain("╭─ 7 Logs")
+    expect(frame).not.toContain("╭─ 6 Logs")
     setup.resize(110, 34)
     await setup.flush()
   })
@@ -192,7 +209,7 @@ maybe("lazygortex", () => {
   })
 
   test("a destructive action asks for confirmation first", async () => {
-    setup.mockInput.pressKey("6")
+    setup.mockInput.pressKey("5")
     await setup.flush()
     expect(state.panel).toBe("daemon")
 
@@ -212,7 +229,7 @@ maybe("lazygortex", () => {
   })
 
   test("the logs panel renders daemon log lines", async () => {
-    setup.mockInput.pressKey("7")
+    setup.mockInput.pressKey("6")
     await setup.flush()
     expect(state.panel).toBe("logs")
 
@@ -222,12 +239,7 @@ maybe("lazygortex", () => {
 
   test("the last view is restored, and restoring does not overwrite what it read", async () => {
     const fixture = `${process.env["TMPDIR"] ?? "/tmp"}/lazygortex-restore-test.json`
-    const saved = {
-      panel: "analyze",
-      repo: state.repos.data?.at(-1)?.path,
-      analyzeKind: "cycles",
-      logTail: 150,
-    }
+    const saved = { panel: "savings", repo: state.repos.data?.at(-1)?.path, logTail: 150 }
     await Bun.write(fixture, JSON.stringify(saved))
     process.env["LAZYGORTEX_STATE_FILE"] = fixture
 
@@ -235,11 +247,10 @@ maybe("lazygortex", () => {
       await restoreView()
       await setup.flush()
 
-      expect(state.panel).toBe("analyze")
+      expect(state.panel).toBe("savings")
       expect(state.logTail).toBe(150)
-      // the panel restored through selectPanel, so its catalogue loaded too
-      expect(state.kinds.data?.length ?? 0).toBeGreaterThan(10)
-      expect(state.kinds.data?.[state.cursor.analyze]?.name).toBe("cycles")
+      // the panel restored through selectPanel, so its data loaded too
+      expect(state.savings.data).toBeTruthy()
       expect(repoRows()[state.cursor.repos]?.path).toBe(saved.repo!)
 
       // a save fired mid-restore would have clobbered the file with defaults

@@ -7,9 +7,8 @@
  * degraded state instead of crashing the renderer.
  */
 
-import { parseAnalyzeKinds, parseDaemonStatus, parseSavings, parseWorkspaceList, errorMessage } from "./parse.ts"
+import { parseDaemonStatus, parseSavings, parseWorkspaceList, errorMessage } from "./parse.ts"
 import type {
-  AnalyzeKind,
   CommandResult,
   DaemonStatus,
   GraphSummary,
@@ -171,23 +170,6 @@ export function indexHealth(repoPath: string): Promise<IndexHealth> {
 /** `gortex workspace list` — what each repo declares, and where it declares it. */
 export async function workspaceList(): Promise<WorkspaceDeclaration[]> {
   return parseWorkspaceList(await text(["workspace", "list"], { timeoutMs: 15_000 }))
-}
-
-/** `gortex analyze kinds` — the analyzer catalogue. */
-export async function analyzeKinds(repoPath: string): Promise<AnalyzeKind[]> {
-  return parseAnalyzeKinds(await text(["analyze", "kinds", "--index", repoPath], { timeoutMs: 20_000 }))
-}
-
-/**
- * `gortex analyze --kind <kind>`.
- *
- * Results cover the whole index: `--path-prefix` does not restrict them, so the
- * panel says so rather than pretending the output is repo-scoped.
- */
-export function analyze(kind: string, repoPath: string, limit = 50): Promise<unknown> {
-  return json(["analyze", "--kind", kind, "--index", repoPath, "--format", "json", "--limit", String(limit)], {
-    timeoutMs: 180_000,
-  })
 }
 
 // ---------------------------------------------------------------------------

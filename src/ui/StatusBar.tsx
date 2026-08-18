@@ -20,7 +20,7 @@ function hintParts(bindings: Binding[], width: number): Piece[] {
     const label = binding.label
     const description = ` ${binding.description}   `
     if (used + label.length + description.length > width) break
-    parts.push(c(theme.accent, label), c(theme.muted, description, { bg: theme.panelAlt }))
+    parts.push(c(theme.accent, label), c(theme.muted, description))
     used += label.length + description.length
   }
   return parts

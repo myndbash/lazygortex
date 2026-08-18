@@ -4,23 +4,29 @@
  */
 
 import { For, Show, createMemo, onMount, type Accessor } from "solid-js"
+import { useTerminalDimensions } from "@opentui/solid"
 import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core"
 import {
-  currentKind,
   currentRepo,
   currentWorkspace,
   repoGraph,
   setState,
   state,
   PANEL_TITLES,
-  type Analysis,
   type RepoRow,
 } from "../state/store.ts"
-import type { AnalyzeKind, DaemonSession, IndexHealth } from "../gortex/types.ts"
+import type { DaemonSession, IndexHealth } from "../gortex/types.ts"
 import { setScroller } from "./keymap.ts"
 import { c, Row } from "./Row.tsx"
-import { FRESHNESS } from "./SidePanel.tsx"
+import { Table } from "./Table.tsx"
+import { FRESHNESS, SIDE_WIDTH } from "./SidePanel.tsx"
 import { bar, glyph, humanCount, relativeTime, shortPath, theme, truncate } from "./theme.ts"
+
+/** Characters the detail pane can give a table. */
+function usePaneWidth(): () => number {
+  const dimensions = useTerminalDimensions()
+  return () => Math.max(24, dimensions().width - SIDE_WIDTH - 6)
+}
 
 function Section(props: { title: string }) {
   return (
@@ -85,6 +91,7 @@ function Loading(props: { when: boolean; children: unknown }) {
 // ---------------------------------------------------------------------------
 
 function ReposDetail() {
+  const paneWidth = usePaneWidth()
   const repo = createMemo(() => currentRepo())
   const graph = () => (repo() ? repoGraph(repo()!.name) : null)
 
@@ -111,10 +118,23 @@ function ReposDetail() {
           <Blank />
 
           <Section title="index size" />
-          <KV k="files" v={humanCount(row().files)} />
-          <KV k="nodes" v={humanCount(row().nodes)} />
-          <KV k="edges" v={humanCount(row().edges)} />
-          <KV k="on disk" v={row().size} />
+          <Table
+            width={paneWidth()}
+            columns={[
+              { header: "files", align: "right" },
+              { header: "nodes", align: "right" },
+              { header: "edges", align: "right" },
+              { header: "on disk", align: "right" },
+            ]}
+            rows={[
+              [
+                humanCount(row().files),
+                humanCount(row().nodes),
+                humanCount(row().edges),
+                { text: row().size || "—", fg: theme.dim },
+              ],
+            ]}
+          />
           <Blank />
 
           <Section title="graph" />
@@ -135,108 +155,11 @@ function ReposDetail() {
 }
 
 // ---------------------------------------------------------------------------
-// analyze
-// ---------------------------------------------------------------------------
-
-/** Pull the list out of an analyzer result: the first array-valued key wins. */
-function resultRows(result: unknown): { key: string; rows: unknown[] } | null {
-  if (Array.isArray(result)) return { key: "results", rows: result }
-  if (!result || typeof result !== "object") return null
-  for (const [key, value] of Object.entries(result as Record<string, unknown>)) {
-    if (Array.isArray(value)) return { key, rows: value }
-  }
-  return null
-}
-
-/** One result row, rendered from whichever common fields it happens to carry. */
-function describe(entry: unknown): string {
-  if (entry === null || typeof entry !== "object") return String(entry)
-  const row = entry as Record<string, unknown>
-  const name = row["name"] ?? row["symbol"] ?? row["id"] ?? row["file"] ?? ""
-  const where = row["file"] && row["file"] !== name ? ` ${String(row["file"])}` : ""
-  const line = row["line"] ? `:${String(row["line"])}` : ""
-  const extras = ["score", "count", "total", "pct", "severity", "tag", "text", "reason"]
-    .filter((key) => row[key] !== undefined)
-    .map((key) => `${key}=${String(row[key])}`)
-    .join("  ")
-  return `${String(name)}${where}${line}${extras ? `  ${extras}` : ""}`
-}
-
-function AnalysisView(props: { analysis: Analysis }) {
-  const list = () => resultRows(props.analysis.result)
-  const scalars = () => {
-    const result = props.analysis.result
-    if (!result || typeof result !== "object" || Array.isArray(result)) return []
-    return Object.entries(result as Record<string, unknown>).filter(
-      ([, value]) => value === null || typeof value !== "object",
-    )
-  }
-
-  return (
-    <box style={{ flexDirection: "column" }}>
-      <Section title={`${props.analysis.kind} result`} />
-      <For each={scalars()}>{([key, value]) => <KV k={key} v={String(value)} />}</For>
-      <Blank />
-      <Show when={list() && list()!.rows.length > 0} fallback={<text fg={theme.dim}>no rows returned</text>}>
-        <text fg={theme.muted}>{`${list()!.key} (${list()!.rows.length})`}</text>
-        <For each={list()!.rows}>
-          {(entry, index) => (
-            <Row parts={[c(theme.dim, `${String(index() + 1).padStart(3)}  `), c(theme.text, describe(entry))]} />
-          )}
-        </For>
-      </Show>
-    </box>
-  )
-}
-
-function AnalyzeDetail() {
-  const kind = createMemo(() => currentKind())
-  return (
-    <box style={{ flexDirection: "column" }}>
-      <ErrorLine error={state.kinds.error} />
-      <Show when={kind()} fallback={<text fg={theme.dim}>no analyzer selected</text>}>
-        {(selected: Accessor<AnalyzeKind>) => (
-          <box style={{ flexDirection: "column" }}>
-            <Section title={selected().name} />
-            <For each={wrap(selected().description, 70)}>{(row) => <text fg={theme.text}>{row}</text>}</For>
-            <Show when={selected().writes}>
-              <Blank />
-              <text fg={theme.warn}>{`${glyph.stale} writes metadata into the graph — asks before running`}</text>
-            </Show>
-            <Blank />
-            <text fg={theme.muted}>press a to run it · results cover the whole index, not just this repo</text>
-            <Blank />
-          </box>
-        )}
-      </Show>
-      <ErrorLine error={state.analysis.error} />
-      <Show when={state.analysis.data}>{(analysis: Accessor<Analysis>) => <AnalysisView analysis={analysis()} />}</Show>
-    </box>
-  )
-}
-
-/** Naive word wrap for description text. */
-function wrap(text: string, width: number): string[] {
-  const words = text.split(/\s+/)
-  const lines: string[] = []
-  let current = ""
-  for (const word of words) {
-    if (current.length + word.length + 1 > width) {
-      lines.push(current)
-      current = word
-    } else {
-      current = current ? `${current} ${word}` : word
-    }
-  }
-  if (current) lines.push(current)
-  return lines
-}
-
-// ---------------------------------------------------------------------------
 // workspaces
 // ---------------------------------------------------------------------------
 
 function WorkspacesDetail() {
+  const paneWidth = usePaneWidth()
   const name = createMemo(() => currentWorkspace())
   const workspace = () => (state.status.data?.workspaces ?? []).find((row) => row.workspace === name())
   const declarations = () => (state.declarations.data ?? []).filter((row) => row.workspace === name())
@@ -255,29 +178,25 @@ function WorkspacesDetail() {
 
           <Section title="declarations" />
           <ErrorLine error={state.declarations.error} />
-          <Row
-            parts={[
-              c(theme.dim, "repo".padEnd(14)),
-              c(theme.dim, "project".padEnd(14)),
-              c(theme.dim, "declared in".padEnd(16)),
-              c(theme.dim, "path"),
+          <Table
+            width={paneWidth()}
+            columns={[
+              { header: "repo" },
+              { header: "project" },
+              { header: "declared in" },
+              { header: "path", max: 44 },
             ]}
+            rows={declarations().map((row) => [
+              { text: row.repo, fg: theme.text },
+              { text: row.project, fg: theme.info },
+              { text: row.source, fg: theme.muted },
+              { text: shortPath(row.path), fg: theme.dim },
+            ])}
           />
-          <For each={declarations()}>
-            {(row) => (
-              <Row
-                parts={[
-                  c(theme.text, truncate(row.repo, 13).padEnd(14)),
-                  c(theme.info, truncate(row.project, 13).padEnd(14)),
-                  c(theme.muted, truncate(row.source, 15).padEnd(16)),
-                  c(theme.dim, shortPath(row.path)),
-                ]}
-              />
-            )}
-          </For>
+
           <Blank />
-          <text fg={theme.muted}>Repos that declare the same workspace slug share one graph boundary; cross-repo</text>
-          <text fg={theme.muted}>contract matching stops at it. Press W on a repo to change its slug.</text>
+          <text fg={theme.muted}>Repos sharing a slug share one graph boundary.</text>
+          <text fg={theme.muted}>Press W on a repo to change its slug.</text>
         </box>
       )}
     </Show>
@@ -289,6 +208,7 @@ function WorkspacesDetail() {
 // ---------------------------------------------------------------------------
 
 function SessionsDetail() {
+  const paneWidth = usePaneWidth()
   const sessions = () => state.status.data?.mcpSessions ?? []
   const session = () => sessions()[Math.min(state.cursor.sessions, Math.max(0, sessions().length - 1))]
 
@@ -303,13 +223,22 @@ function SessionsDetail() {
           <KV k="cwd" v={shortPath(row().cwd)} />
           <Blank />
           <Section title={`all sessions (${sessions().length})`} />
-          <For each={sessions()}>
-            {(other) => (
-              <text fg={other.id === row().id ? theme.text : theme.muted}>
-                {`${other.client.padEnd(13)} ${other.connected.padEnd(8)} ${shortPath(other.cwd)}`}
-              </text>
-            )}
-          </For>
+          <Table
+            width={paneWidth()}
+            columns={[
+              { header: "client" },
+              { header: "version" },
+              { header: "connected", align: "right" },
+              { header: "cwd", max: 46 },
+            ]}
+            rows={sessions().map((other) => [
+              { text: other.client, fg: other.id === row().id ? theme.text : theme.muted },
+              { text: other.version, fg: theme.dim },
+              { text: other.connected, fg: theme.dim },
+              { text: shortPath(other.cwd), fg: theme.muted },
+            ])}
+            highlight={(index) => (sessions()[index]?.id === row().id ? theme.selectionBg : undefined)}
+          />
         </box>
       )}
     </Show>
@@ -317,25 +246,32 @@ function SessionsDetail() {
 }
 
 function SavingsDetail() {
+  const paneWidth = usePaneWidth()
   const savings = () => state.savings.data
   return (
     <box style={{ flexDirection: "column" }}>
       <ErrorLine error={state.savings.error} />
       <Show when={savings()} fallback={<text fg={theme.dim}>loading…</text>}>
         <Section title="token savings" />
-        <For each={savings()?.buckets ?? []}>
-          {(bucket) => (
-            <Row
-              parts={[
-                c(theme.muted, bucket.label.padEnd(13)),
-                c(theme.ok, bar(bucket.percent)),
-                c(theme.text, ` ${String(bucket.percent).padStart(5)}%  `),
-                c(theme.dim, `${humanCount(bucket.saved)}/${humanCount(bucket.total)} tokens  $${bucket.usd}`),
-              ]}
-            />
-          )}
-        </For>
+        <Table
+          width={paneWidth()}
+          columns={[
+            { header: "window" },
+            { header: "share" },
+            { header: "saved", align: "right" },
+            { header: "of", align: "right" },
+            { header: "cost avoided", align: "right" },
+          ]}
+          rows={(savings()?.buckets ?? []).map((bucket) => [
+            { text: bucket.label, fg: theme.text },
+            { text: `${bar(bucket.percent, 14)} ${String(bucket.percent).padStart(5)}%`, fg: theme.ok },
+            { text: humanCount(bucket.saved), fg: theme.text },
+            { text: humanCount(bucket.total), fg: theme.dim },
+            { text: `$${bucket.usd}`, fg: theme.info },
+          ])}
+        />
         <Blank />
+
         <Section title="dashboard" />
         <For each={(savings()?.text ?? "").split("\n").slice(3)}>
           {(row) => <text fg={theme.muted}>{row || " "}</text>}
@@ -374,6 +310,7 @@ function HealthSection(props: { health: IndexHealth }) {
 }
 
 function DaemonDetail() {
+  const paneWidth = usePaneWidth()
   const status = () => state.status.data
   const sum = (pick: (repo: { files: number; nodes: number; edges: number }) => number) =>
     humanCount((status()?.repos ?? []).reduce((total, repo) => total + pick(repo), 0))
@@ -408,6 +345,28 @@ function DaemonDetail() {
         <KV k="nodes" v={sum((repo) => repo.nodes)} />
         <KV k="edges" v={sum((repo) => repo.edges)} />
         <Blank />
+        <Section title="tracked repos" />
+        <Table
+          width={paneWidth()}
+          columns={[
+            { header: "repo" },
+            { header: "workspace" },
+            { header: "files", align: "right" },
+            { header: "nodes", align: "right" },
+            { header: "edges", align: "right" },
+            { header: "on disk", align: "right" },
+          ]}
+          rows={(status()?.repos ?? []).map((repo) => [
+            { text: repo.repo, fg: theme.text },
+            { text: repo.workspace, fg: theme.info },
+            humanCount(repo.files),
+            humanCount(repo.nodes),
+            humanCount(repo.edges),
+            { text: repo.total, fg: theme.dim },
+          ])}
+        />
+        <Blank />
+
         <Section title="index health" />
         <ErrorLine error={state.index.error} />
         <Loading when={state.index.loading && !state.index.data}>
@@ -483,10 +442,6 @@ function paneTitle(): string {
       const repo = currentRepo()
       return repo ? `${repo.name} ${glyph.bullet} ${shortPath(repo.path)}` : "Repos"
     }
-    case "analyze": {
-      const kind = currentKind()
-      return kind ? `Analyze ${glyph.bullet} ${kind.name}` : "Analyze"
-    }
     case "workspaces": {
       const workspace = currentWorkspace()
       return workspace ? `Workspace ${glyph.bullet} ${workspace}` : "Workspaces"
@@ -531,9 +486,6 @@ export function MainPane() {
       >
         <Show when={state.panel === "repos"}>
           <ReposDetail />
-        </Show>
-        <Show when={state.panel === "analyze"}>
-          <AnalyzeDetail />
         </Show>
         <Show when={state.panel === "workspaces"}>
           <WorkspacesDetail />

@@ -23,7 +23,6 @@ export interface PersistedState {
   /** absolute path of the repository that was selected */
   repo?: string
   logTail?: number
-  analyzeKind?: string
 }
 
 export async function loadPersisted(): Promise<PersistedState> {
