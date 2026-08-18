@@ -21,17 +21,17 @@ left, a detail pane on the right, one keystroke per action — and the mouse wor
 ╭─ 2 Workspaces ─────────────────────╮│ ├───────┼───────┼────────┼─────────┤                         │
 │ 2 workspaces                       ││ │   672 │  9.2k │  35.9k │ 6.6 MiB │                         │
 ╰────────────────────────────────────╯│ └───────┴───────┴────────┴─────────┘                         │
-╭─ 3 Sessions ───────────────────────╮│                                                              │
-│ 9 connected                        ││ ── graph                                                     │
+╭─ 3 Projects ───────────────────────╮│                                                              │
+│ ti-gerr                    2 repos ││ ── graph                                                     │
 ╰────────────────────────────────────╯│ by kind                                                      │
-╭─ 4 Savings ────────────────────────╮│ variable       ██████████████████ 147.2k                     │
-│ 41.4% saved · $2.54                ││ function       ██░░░░░░░░░░░░░░░░ 16.6k                      │
+╭─ 4 Sessions ───────────────────────╮│ variable       ██████████████████ 147.2k                     │
+│ 9 connected                        ││ function       ██░░░░░░░░░░░░░░░░ 16.6k                      │
 ╰────────────────────────────────────╯│ method         █░░░░░░░░░░░░░░░░░ 5.3k                       │
-╭─ 5 Daemon ─────────────────────────╮│                                                              │
-│ ready · 4h26m                      ││                                                              │
+╭─ 5 Savings ────────────────────────╮│                                                              │
+│ 41.4% saved · $2.54                ││                                                              │
 ╰────────────────────────────────────╯│                                                              │
-╭─ 6 Logs ───────────────────────────╮│                                                              │
-│ 301 lines buffered                 ││                                                              │
+╭─ 6 Daemon ─────────────────────────╮│                                                              │
+│ ready · 4h26m                      ││                                                              │
 ╰────────────────────────────────────╯╰──────────────────────────────────────────────────────────────╯
  ready
  t track a repository   u untrack the selected repository   R re-index (clears a stale index)
@@ -43,6 +43,7 @@ left, a detail pane on the right, one keystroke per action — and the mouse wor
 | -------------- | ----------------------------------------------------------------------- | -------------------------------------------------- |
 | **Repos**      | tracked repos, freshness, branch, counts, and a per-repo graph breakdown | `repos --json`, `daemon status`, `workspace graph`  |
 | **Workspaces** | workspace rollups plus what each repo declares, and where               | `daemon status`, `workspace list`                  |
+| **Projects**   | repos grouped by the project slug they declare, with their members      | `workspace list`, `daemon status`                  |
 | **Sessions**   | connected MCP clients, versions and working directories                 | `daemon status`                                    |
 | **Savings**    | the token-savings dashboard                                             | `savings`                                          |
 | **Daemon**     | pid, socket, uptime, memory, index health, the tracked-repo roster       | `daemon status`, `workspace index`                 |
@@ -57,6 +58,30 @@ Everything is read through the `gortex` CLI — no private protocol, no socket h
 have a `--json` flag use it; `daemon status` and `workspace list` are parsed from their tables by [`src/gortex/parse.ts`](src/gortex/parse.ts), forgivingly: an unknown key still
 shows up, an unrecognised table simply yields no rows, and a stopped daemon renders as a stopped
 daemon rather than an exception.
+
+## Colour
+
+Colour is signal, not decoration: structure is drawn in greys, and a hue is spent only where it
+tells you something.
+
+| Where                        | What the colour means                                                     |
+| ---------------------------- | ------------------------------------------------------------------------- |
+| repository marks             | freshness — see below                                                     |
+| counts (nodes, files, edges) | magnitude against the largest repo, so the heavyweight reads as one        |
+| `last indexed`, log times    | recency: within the hour, today, this week, older                          |
+| daemon state                 | `ready` green, warming up or indexing amber, stopped or failed red         |
+| health score, savings share  | good / borderline / bad thresholds                                        |
+| `edges ok`, `regressions`    | a flag that should be true, a count that should be zero                    |
+| session `cwd`                | green inside a tracked repo, amber outside one                            |
+| branches                     | `main`/`master` quiet, a topic branch highlighted                          |
+| log lines                    | level colours the level; only warnings and errors colour the message       |
+| a missing value              | always dim, so `—` never competes with real data                          |
+
+A caveat worth knowing if you extend the UI: OpenTUI 0.5.3 drops colour on inline text nodes —
+`<span fg>`, `<b fg>` and custom `TextNodeRenderable`s all render in the default foreground — so
+[`Row`](src/ui/Row.tsx) builds a line out of small `<text>` elements instead, and the selection
+highlight is the background of the box that holds them. [`semantics.ts`](src/ui/semantics.ts) owns
+every rule in the table above and is unit-tested.
 
 ## Repository marks
 
@@ -105,7 +130,7 @@ Press `?` for the full list, which is generated from the same table the key hand
 
 | Key           | Action                    |
 | ------------- | ------------------------- |
-| `1` … `6`     | jump straight to a panel  |
+| `1` … `7`     | jump straight to a panel  |
 | `tab` / `[`   | next / previous panel     |
 | `j` `k` / ↑ ↓ | move the selection        |
 | `PgUp` `PgDn` | page                      |
@@ -154,12 +179,18 @@ Destructive actions — stop, restart, untrack, re-index, init — ask for confi
 Click a panel to focus it, a row to select it, the detail pane to scroll it, and the buttons or
 menu entries in a dialog to choose them. The wheel scrolls the detail pane.
 
-## Workspaces
+## Workspaces and projects
 
-A workspace is not created, it is *declared*: two repos that name the same `workspace:` slug in
-their `.gortex.yaml` share one graph boundary, and cross-repo contract matching stops at that
-boundary. The Workspaces panel shows the rollup and every member's declaration (workspace, project
-and which file it came from); `W` on a repo writes a new slug.
+Neither is created; both are *declared*. Two repos that name the same `workspace:` slug in their
+`.gortex.yaml` share one graph boundary, and cross-repo contract matching stops at that boundary.
+Within a workspace, the `project:` slug is the finer grouping — usually one repo, but a linked git
+worktree or a split front end and back end land several repos under one project.
+
+- **Workspaces** shows the rollup and every member's declaration (workspace, project, source file).
+- **Projects** shows the other axis: each slug with its member repos, their branches, freshness and
+  sizes, so a multi-repo project reads as one unit.
+
+`W` on a repo writes a new `workspace[/project]`; `/` filters either panel, `y` yanks the slug.
 
 ## Layout of the code
 
@@ -180,6 +211,7 @@ src/
     Overlays.tsx      help, confirm, prompt and menu modals
     StatusBar.tsx     busy spinner, messages, contextual key hints
     Row.tsx           multi-coloured text rows (and the row highlight)
+    semantics.ts      what a colour means: freshness, severity, magnitude, recency
     Table.tsx         box-drawing tables sized to the pane
     keymap.ts         the keymap as data — help and handler read the same table
     theme.ts          colours, glyphs, formatting helpers
@@ -193,11 +225,11 @@ Polling is per-slot and never overlaps itself: daemon status every 3s, repos eve
 The answer already carries a `per_repo` breakdown, so every repository's bars are served from that
 one cached call, and it refreshes on `r`, after a mutation, and on a two-minute timer.
 
-Six panels do not always fit a short terminal, so when the focused panel would be squeezed below
-six rows the unfocused ones collapse from boxes to single header rows.
+Seven panels do not fit a short terminal, so when the focused panel would be squeezed below six
+rows the unfocused ones collapse from boxes to single header rows.
 
-The selected row is painted with a background colour, which OpenTUI only honours on a text node's
-own `bg` — a background set on an inline span is silently dropped, so `Row` owns the highlight.
+The selected row is painted with a background colour on the row's own box: OpenTUI drops both `fg`
+and `bg` set on an inline span, so `Row` never uses one.
 
 ## Tests
 

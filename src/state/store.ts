@@ -25,12 +25,13 @@ import { loadPersisted, savePersisted } from "./persist.ts"
  * Panel order. Repos leads because it is what people come for; Daemon sits
  * immediately before Logs at the end, where the plumbing belongs.
  */
-export const PANELS = ["repos", "workspaces", "sessions", "savings", "daemon", "logs"] as const
+export const PANELS = ["repos", "workspaces", "projects", "sessions", "savings", "daemon", "logs"] as const
 export type PanelId = (typeof PANELS)[number]
 
 export const PANEL_TITLES: Record<PanelId, string> = {
   repos: "Repos",
   workspaces: "Workspaces",
+  projects: "Projects",
   sessions: "Sessions",
   savings: "Savings",
   daemon: "Daemon",
@@ -270,7 +271,7 @@ export interface RepoRow {
  * satisfy the first test, so it is reported as unversioned rather than stale —
  * otherwise `~/.config` looks permanently out of date.
  */
-export function repoRows(): RepoRow[] {
+export function repoRows(options: { filtered?: boolean } = {}): RepoRow[] {
   const list = state.repos.data ?? []
   const daemonRepos = state.status.data?.repos ?? []
   const declarations = state.declarations.data ?? []
@@ -278,6 +279,8 @@ export function repoRows(): RepoRow[] {
   const rows = list.map<RepoRow>((repo) => {
     const extra = daemonRepos.find((row) => row.path === repo.path || row.repo === repo.name)
     const declared = declarations.find((row) => row.path === repo.path || row.repo === repo.name)
+    // the daemon reports one composite `workspace/project` slug
+    const [statusWorkspace = "", statusProject = ""] = (extra?.workspace ?? "").split("/")
     const versioned = Boolean(repo.head_commit || repo.branch)
     const freshness: Freshness = !repo.indexed
       ? "unindexed"
@@ -289,8 +292,8 @@ export function repoRows(): RepoRow[] {
     return {
       name: repo.name,
       path: repo.path,
-      workspace: declared?.workspace ?? extra?.workspace ?? "",
-      project: declared?.project ?? "",
+      workspace: declared?.workspace ?? statusWorkspace,
+      project: declared?.project ?? statusProject,
       branch: repo.branch ?? "",
       head: repo.head_commit ?? "",
       freshness,
@@ -305,11 +308,12 @@ export function repoRows(): RepoRow[] {
   // repos the daemon knows about but the config listing does not
   for (const row of daemonRepos) {
     if (rows.some((existing) => existing.path === row.path)) continue
+    const [workspace = "", project = ""] = row.workspace.split("/")
     rows.push({
       name: row.repo,
       path: row.path,
-      workspace: row.workspace,
-      project: "",
+      workspace,
+      project,
       branch: "",
       head: "",
       freshness: "fresh",
@@ -321,7 +325,7 @@ export function repoRows(): RepoRow[] {
     })
   }
 
-  const needle = state.filter.repos.trim().toLowerCase()
+  const needle = options.filtered === false ? "" : state.filter.repos.trim().toLowerCase()
   const filtered = needle
     ? rows.filter((row) => row.name.toLowerCase().includes(needle) || row.path.toLowerCase().includes(needle))
     : rows
@@ -344,6 +348,61 @@ export function repoGraph(
   return entry && typeof entry === "object" ? (entry as Record<string, never>) : null
 }
 
+export interface ProjectRow {
+  /** `workspace/project`, unique across the index */
+  key: string
+  workspace: string
+  project: string
+  /** distinct places the slug is declared */
+  sources: string[]
+  members: RepoRow[]
+  files: number
+  nodes: number
+  edges: number
+}
+
+/**
+ * Repos grouped by the project slug they declare — the second axis next to
+ * workspaces. A project usually holds one repo, but a linked worktree or a
+ * split front/back end lands several under the same slug.
+ */
+export function projectRows(): ProjectRow[] {
+  const declarations = state.declarations.data ?? []
+  const groups = new Map<string, ProjectRow>()
+
+  for (const repo of repoRows({ filtered: false })) {
+    const project = repo.project || repo.name
+    const key = `${repo.workspace}/${project}`
+    const group = groups.get(key) ?? {
+      key,
+      workspace: repo.workspace,
+      project,
+      sources: [],
+      members: [],
+      files: 0,
+      nodes: 0,
+      edges: 0,
+    }
+    const source = declarations.find((row) => row.path === repo.path)?.source
+    if (source && !group.sources.includes(source)) group.sources.push(source)
+    group.members.push(repo)
+    group.files += repo.files
+    group.nodes += repo.nodes
+    group.edges += repo.edges
+    groups.set(key, group)
+  }
+
+  const needle = state.filter.projects.trim().toLowerCase()
+  const rows = [...groups.values()].filter((row) => !needle || row.key.toLowerCase().includes(needle))
+  return rows.sort((a, b) => b.nodes - a.nodes || a.key.localeCompare(b.key))
+}
+
+export function currentProject(): ProjectRow | null {
+  const rows = projectRows()
+  if (rows.length === 0) return null
+  return rows[Math.min(state.cursor.projects, rows.length - 1)] ?? null
+}
+
 export function workspaceNames(): string[] {
   return (state.status.data?.workspaces ?? []).map((workspace) => workspace.workspace)
 }
@@ -360,6 +419,8 @@ export function listLength(panel: PanelId): number {
       return repoRows().length
     case "workspaces":
       return state.status.data?.workspaces.length ?? 0
+    case "projects":
+      return projectRows().length
     case "sessions":
       return state.status.data?.mcpSessions.length ?? 0
     case "daemon":
@@ -393,7 +454,7 @@ export function selectPanel(panel: PanelId): void {
   if (panel === "logs" && !state.logs.data) void refresh.logs()
   if (panel === "repos" && !state.graph.data) void refresh.graph()
   if (panel === "daemon" && !state.index.data) void refresh.index()
-  if (panel === "workspaces" && !state.declarations.data) void refresh.declarations()
+  if ((panel === "workspaces" || panel === "projects") && !state.declarations.data) void refresh.declarations()
   remember()
 }
 

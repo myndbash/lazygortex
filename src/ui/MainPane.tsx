@@ -7,12 +7,15 @@ import { For, Show, createMemo, onMount, type Accessor } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
 import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core"
 import {
+  currentProject,
   currentRepo,
   currentWorkspace,
   repoGraph,
+  repoRows,
   setState,
   state,
   PANEL_TITLES,
+  type ProjectRow,
   type RepoRow,
 } from "../state/store.ts"
 import type { DaemonSession, IndexHealth } from "../gortex/types.ts"
@@ -20,6 +23,19 @@ import { setScroller } from "./keymap.ts"
 import { c, Row } from "./Row.tsx"
 import { Table } from "./Table.tsx"
 import { FRESHNESS, SIDE_WIDTH } from "./SidePanel.tsx"
+import {
+  ageColor,
+  branchColor,
+  faultColor,
+  flagColor,
+  logColor,
+  magnitudeColor,
+  scoreColor,
+  shareColor,
+  stateColor,
+  uptimeColor,
+  LEVEL_COLOR,
+} from "./semantics.ts"
 import { bar, glyph, humanCount, relativeTime, shortPath, theme, truncate } from "./theme.ts"
 
 /** Characters the detail pane can give a table. */
@@ -37,8 +53,11 @@ function Section(props: { title: string }) {
 }
 
 function KV(props: { k: string; v: string | number | undefined; fg?: string }) {
-  const value = () => (props.v === undefined || props.v === "" ? "—" : String(props.v))
-  return <Row parts={[c(theme.dim, props.k.padEnd(16)), c(props.fg ?? theme.text, value())]} />
+  const missing = () => props.v === undefined || props.v === ""
+  const value = () => (missing() ? "—" : String(props.v))
+  return (
+    <Row parts={[c(theme.dim, props.k.padEnd(16)), c(missing() ? theme.dim : (props.fg ?? theme.text), value())]} />
+  )
 }
 
 function Blank() {
@@ -90,6 +109,11 @@ function Loading(props: { when: boolean; children: unknown }) {
 // repos
 // ---------------------------------------------------------------------------
 
+/** The largest value across every tracked repo, for magnitude colouring. */
+function maxOf(pick: (repo: RepoRow) => number): number {
+  return repoRows({ filtered: false }).reduce((max, repo) => Math.max(max, pick(repo)), 0)
+}
+
 function ReposDetail() {
   const paneWidth = usePaneWidth()
   const repo = createMemo(() => currentRepo())
@@ -102,8 +126,8 @@ function ReposDetail() {
           <Section title={row().name} />
           <KV k="path" v={shortPath(row().path)} />
           <KV k="workspace" v={row().project ? `${row().workspace}/${row().project}` : row().workspace} />
-          <KV k="branch" v={row().branch} />
-          <KV k="head" v={row().head ? row().head.slice(0, 12) : ""} />
+          <KV k="branch" v={row().branch} fg={branchColor(row().branch)} />
+          <KV k="head" v={row().head ? row().head.slice(0, 12) : ""} fg={theme.dim} />
           <Row
             parts={[
               c(theme.dim, "freshness".padEnd(16)),
@@ -114,7 +138,7 @@ function ReposDetail() {
           <Show when={row().freshness === "stale"}>
             <Row parts={[c(theme.dim, "".padEnd(16)), c(theme.muted, "press R to re-index it now")]} />
           </Show>
-          <KV k="last indexed" v={relativeTime(row().lastIndexed)} />
+          <KV k="last indexed" v={relativeTime(row().lastIndexed)} fg={ageColor(row().lastIndexed)} />
           <Blank />
 
           <Section title="index size" />
@@ -128,9 +152,27 @@ function ReposDetail() {
             ]}
             rows={[
               [
-                humanCount(row().files),
-                humanCount(row().nodes),
-                humanCount(row().edges),
+                {
+                  text: humanCount(row().files),
+                  fg: magnitudeColor(
+                    row().files,
+                    maxOf((repo) => repo.files),
+                  ),
+                },
+                {
+                  text: humanCount(row().nodes),
+                  fg: magnitudeColor(
+                    row().nodes,
+                    maxOf((repo) => repo.nodes),
+                  ),
+                },
+                {
+                  text: humanCount(row().edges),
+                  fg: magnitudeColor(
+                    row().edges,
+                    maxOf((repo) => repo.edges),
+                  ),
+                },
                 { text: row().size || "—", fg: theme.dim },
               ],
             ]}
@@ -155,6 +197,68 @@ function ReposDetail() {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// projects
+// ---------------------------------------------------------------------------
+
+function ProjectsDetail() {
+  const paneWidth = usePaneWidth()
+  const project = createMemo(() => currentProject())
+
+  return (
+    <Show when={project()} fallback={<text fg={theme.dim}>no project</text>}>
+      {(row: Accessor<ProjectRow>) => (
+        <box style={{ flexDirection: "column" }}>
+          <Section title={`${row().project}`} />
+          <KV k="workspace" v={row().workspace} />
+          <KV k="declared in" v={row().sources.join(", ")} />
+          <KV k="repos" v={row().members.length} />
+          <KV k="files" v={humanCount(row().files)} />
+          <KV k="nodes" v={humanCount(row().nodes)} />
+          <KV k="edges" v={humanCount(row().edges)} />
+          <Blank />
+
+          <Section title="members" />
+          <Table
+            width={paneWidth()}
+            columns={[
+              { header: "repo" },
+              { header: "branch" },
+              { header: "files", align: "right" },
+              { header: "nodes", align: "right" },
+              { header: "path", max: 40 },
+            ]}
+            rows={row().members.map((member) => [
+              { text: `${FRESHNESS[member.freshness].mark} ${member.name}`, fg: FRESHNESS[member.freshness].fg },
+              { text: member.branch || "—", fg: branchColor(member.branch) },
+              {
+                text: humanCount(member.files),
+                fg: magnitudeColor(
+                  member.files,
+                  maxOf((repo) => repo.files),
+                ),
+              },
+              {
+                text: humanCount(member.nodes),
+                fg: magnitudeColor(
+                  member.nodes,
+                  maxOf((repo) => repo.nodes),
+                ),
+              },
+              { text: shortPath(member.path), fg: theme.muted },
+            ])}
+          />
+          <Blank />
+          <Show when={row().members.length > 1}>
+            <text fg={theme.muted}>These repos share one project slug, so the graph treats them as one unit.</text>
+          </Show>
+          <text fg={theme.muted}>Press W on a repo to move it to another workspace/project.</text>
+        </box>
+      )}
+    </Show>
+  )
+}
+
 // workspaces
 // ---------------------------------------------------------------------------
 
@@ -207,6 +311,11 @@ function WorkspacesDetail() {
 // sessions / savings / daemon / logs
 // ---------------------------------------------------------------------------
 
+/** Does a session's cwd sit inside a repo the daemon indexes? */
+function tracked(cwd: string): boolean {
+  return repoRows({ filtered: false }).some((repo) => cwd === repo.path || cwd.startsWith(`${repo.path}/`))
+}
+
 function SessionsDetail() {
   const paneWidth = usePaneWidth()
   const sessions = () => state.status.data?.mcpSessions ?? []
@@ -219,8 +328,13 @@ function SessionsDetail() {
           <Section title={row().client} />
           <KV k="id" v={row().id} />
           <KV k="version" v={row().version} />
-          <KV k="connected" v={row().connected} />
-          <KV k="cwd" v={shortPath(row().cwd)} />
+          <KV k="connected" v={row().connected} fg={uptimeColor(row().connected)} />
+          <KV k="cwd" v={shortPath(row().cwd)} fg={tracked(row().cwd) ? theme.ok : theme.warn} />
+          <Show when={!tracked(row().cwd)}>
+            <Row
+              parts={[c(theme.dim, "".padEnd(16)), c(theme.muted, "this directory is not part of a tracked repo")]}
+            />
+          </Show>
           <Blank />
           <Section title={`all sessions (${sessions().length})`} />
           <Table
@@ -234,8 +348,8 @@ function SessionsDetail() {
             rows={sessions().map((other) => [
               { text: other.client, fg: other.id === row().id ? theme.text : theme.muted },
               { text: other.version, fg: theme.dim },
-              { text: other.connected, fg: theme.dim },
-              { text: shortPath(other.cwd), fg: theme.muted },
+              { text: other.connected, fg: uptimeColor(other.connected) },
+              { text: shortPath(other.cwd), fg: tracked(other.cwd) ? theme.muted : theme.warn },
             ])}
             highlight={(index) => (sessions()[index]?.id === row().id ? theme.selectionBg : undefined)}
           />
@@ -264,10 +378,13 @@ function SavingsDetail() {
           ]}
           rows={(savings()?.buckets ?? []).map((bucket) => [
             { text: bucket.label, fg: theme.text },
-            { text: `${bar(bucket.percent, 14)} ${String(bucket.percent).padStart(5)}%`, fg: theme.ok },
+            {
+              text: `${bar(bucket.percent, 14)} ${String(bucket.percent).padStart(5)}%`,
+              fg: shareColor(bucket.percent),
+            },
             { text: humanCount(bucket.saved), fg: theme.text },
             { text: humanCount(bucket.total), fg: theme.dim },
-            { text: `$${bucket.usd}`, fg: theme.info },
+            { text: `$${bucket.usd}`, fg: theme.accent },
           ])}
         />
         <Blank />
@@ -295,15 +412,15 @@ function HealthSection(props: { health: IndexHealth }) {
   const score = () => Number(props.health["health_score"] ?? NaN)
   return (
     <box style={{ flexDirection: "column" }}>
-      <KV
-        k="health score"
-        v={Number.isFinite(score()) ? String(score()) : "—"}
-        fg={score() >= 90 ? theme.ok : theme.warn}
-      />
+      <KV k="health score" v={Number.isFinite(score()) ? String(score()) : "—"} fg={scoreColor(score())} />
       <KV k="indexed files" v={humanCount(Number(props.health["indexed_file_count"] ?? 0))} />
       <KV k="nodes/file" v={String(props.health["nodes_per_file"] ?? "—")} />
-      <KV k="edges ok" v={String(props.health["edges_ok"] ?? "—")} />
-      <KV k="regressions" v={String(props.health["resolution_regressions"] ?? "—")} />
+      <KV k="edges ok" v={String(props.health["edges_ok"] ?? "—")} fg={flagColor(props.health["edges_ok"])} />
+      <KV
+        k="regressions"
+        v={String(props.health["resolution_regressions"] ?? "—")}
+        fg={faultColor(props.health["resolution_regressions"])}
+      />
       <KV k="learned tools" v={String(props.health["learned_tools"] ?? "—")} />
     </box>
   )
@@ -331,9 +448,9 @@ function DaemonDetail() {
         <Section title="daemon" />
         <KV k="version" v={status()?.version} />
         <KV k="pid" v={status()?.pid} />
-        <KV k="state" v={status()?.state} fg={theme.ok} />
+        <KV k="state" v={status()?.state} fg={stateColor(status()?.state)} />
         <KV k="uptime" v={status()?.uptime} />
-        <KV k="socket" v={status()?.socket} />
+        <KV k="socket" v={status()?.socket} fg={theme.dim} />
         <KV k="sessions" v={status()?.sessions} />
         <KV k="memory" v={status()?.memory} />
         <Blank />
@@ -359,9 +476,27 @@ function DaemonDetail() {
           rows={(status()?.repos ?? []).map((repo) => [
             { text: repo.repo, fg: theme.text },
             { text: repo.workspace, fg: theme.info },
-            humanCount(repo.files),
-            humanCount(repo.nodes),
-            humanCount(repo.edges),
+            {
+              text: humanCount(repo.files),
+              fg: magnitudeColor(
+                repo.files,
+                maxOf((row) => row.files),
+              ),
+            },
+            {
+              text: humanCount(repo.nodes),
+              fg: magnitudeColor(
+                repo.nodes,
+                maxOf((row) => row.nodes),
+              ),
+            },
+            {
+              text: humanCount(repo.edges),
+              fg: magnitudeColor(
+                repo.edges,
+                maxOf((row) => row.edges),
+              ),
+            },
             { text: repo.total, fg: theme.dim },
           ])}
         />
@@ -402,14 +537,6 @@ function parseLogLine(raw: string): LogLine {
   }
 }
 
-const LEVEL_COLOR: Record<string, string> = {
-  debug: theme.dim,
-  info: theme.info,
-  warn: theme.warn,
-  error: theme.error,
-  fatal: theme.error,
-}
-
 function LogsDetail() {
   const lines = () => (state.logs.data ?? []).filter((row) => row.trim().length > 0).map(parseLogLine)
   return (
@@ -424,7 +551,7 @@ function LogsDetail() {
             parts={[
               row.time && c(theme.dim, `${row.time} `),
               row.level && c(LEVEL_COLOR[row.level] ?? theme.muted, row.level.padEnd(6)),
-              c(theme.text, row.message),
+              c(logColor(row.level), row.message),
               row.caller && c(theme.dim, `  ${row.caller}`),
             ]}
           />
@@ -446,6 +573,11 @@ function paneTitle(): string {
       const workspace = currentWorkspace()
       return workspace ? `Workspace ${glyph.bullet} ${workspace}` : "Workspaces"
     }
+    case "projects": {
+      const project = currentProject()
+      return project ? `Project ${glyph.bullet} ${project.project} (${project.workspace})` : "Projects"
+    }
+
     case "logs":
       return `Daemon logs ${glyph.bullet} last ${state.logTail}`
     default:
@@ -487,6 +619,10 @@ export function MainPane() {
         <Show when={state.panel === "repos"}>
           <ReposDetail />
         </Show>
+        <Show when={state.panel === "projects"}>
+          <ProjectsDetail />
+        </Show>
+
         <Show when={state.panel === "workspaces"}>
           <WorkspacesDetail />
         </Show>

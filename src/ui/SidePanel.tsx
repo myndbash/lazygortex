@@ -8,6 +8,7 @@
 import { For, Show } from "solid-js"
 import {
   PANELS,
+  projectRows,
   PANEL_TITLES,
   repoRows,
   selectPanel,
@@ -17,6 +18,7 @@ import {
   type PanelId,
 } from "../state/store.ts"
 import { c, Row, type Piece } from "./Row.tsx"
+import { ageColor, magnitudeColor, shareColor, stateColor, uptimeColor } from "./semantics.ts"
 import { glyph, humanCount, theme, truncate } from "./theme.ts"
 
 export const SIDE_WIDTH = 38
@@ -40,33 +42,51 @@ export interface PanelRow {
   /** right-aligned suffix */
   meta?: string
   fg?: string
+  /** colour for the suffix; defaults to a quiet grey */
+  metaFg?: string
 }
 
 export function panelRows(panel: PanelId): PanelRow[] {
   switch (panel) {
-    case "repos":
-      return repoRows().map((row) => {
+    case "repos": {
+      const rows = repoRows()
+      const biggest = rows.reduce((max, row) => Math.max(max, row.nodes), 0)
+      return rows.map((row) => {
         const mark = FRESHNESS[row.freshness]
         return {
           text: `${mark.mark} ${row.name}`,
           meta: row.nodes ? humanCount(row.nodes) : "—",
           fg: mark.fg,
+          metaFg: magnitudeColor(row.nodes, biggest),
         }
       })
+    }
     case "workspaces":
       return (state.status.data?.workspaces ?? []).map((workspace) => ({
         text: workspace.workspace,
         meta: `${workspace.repos} repos`,
       }))
+    case "projects": {
+      const projects = projectRows()
+      const biggest = projects.reduce((max, project) => Math.max(max, project.nodes), 0)
+      return projects.map((project) => ({
+        text: project.project,
+        meta: `${project.members.length} repo${project.members.length === 1 ? "" : "s"}`,
+        fg: project.members.length > 1 ? theme.info : theme.text,
+        metaFg: magnitudeColor(project.nodes, biggest),
+      }))
+    }
     case "sessions":
       return (state.status.data?.mcpSessions ?? []).map((session) => ({
         text: `${session.client} ${session.version}`,
         meta: session.connected,
+        metaFg: uptimeColor(session.connected),
       }))
     case "savings":
       return (state.savings.data?.buckets ?? []).map((bucket) => ({
         text: bucket.label,
         meta: `${bucket.percent}%`,
+        metaFg: shareColor(bucket.percent),
       }))
     case "daemon": {
       const status = state.status.data
@@ -83,13 +103,22 @@ function summary(panel: PanelId): { text: string; fg: string } {
     case "repos": {
       const rows = repoRows()
       const stale = rows.filter((row) => row.freshness === "stale").length
+      const newest = rows.reduce((latest, row) => (row.lastIndexed > latest ? row.lastIndexed : latest), "")
       return {
         text: `${rows.length} tracked${stale ? ` ${glyph.bullet} ${stale} stale` : ""}`,
-        fg: stale ? theme.warn : theme.muted,
+        fg: stale ? theme.warn : ageColor(newest),
       }
     }
     case "workspaces":
       return { text: `${state.status.data?.workspaces.length ?? 0} workspaces`, fg: theme.muted }
+    case "projects": {
+      const projects = projectRows()
+      const shared = projects.filter((project) => project.members.length > 1).length
+      return {
+        text: `${projects.length} projects${shared ? ` ${glyph.bullet} ${shared} multi-repo` : ""}`,
+        fg: theme.muted,
+      }
+    }
     case "sessions":
       return { text: `${state.status.data?.mcpSessions.length ?? 0} connected`, fg: theme.muted }
     case "savings": {
@@ -102,7 +131,10 @@ function summary(panel: PanelId): { text: string; fg: string } {
       if (state.status.error && !status) return { text: state.status.error, fg: theme.error }
       if (!status) return { text: "loading…", fg: theme.dim }
       if (!status.running) return { text: "stopped", fg: theme.error }
-      return { text: `${status.state ?? "running"} ${glyph.bullet} ${status.uptime ?? ""}`, fg: theme.ok }
+      return {
+        text: `${status.state ?? "running"} ${glyph.bullet} ${status.uptime ?? ""}`,
+        fg: stateColor(status.state),
+      }
     }
     case "logs":
       return { text: `${state.logs.data?.length ?? 0} lines buffered`, fg: theme.muted }
@@ -114,7 +146,8 @@ function rowParts(row: PanelRow, width: number, selected: boolean): Piece[] {
   const label = truncate(row.text, Math.max(4, width - meta.length - 1))
   const pad = " ".repeat(Math.max(1, width - label.length - meta.length))
   const fg = selected ? theme.selectionFg : (row.fg ?? theme.text)
-  return [c(fg, label), c(theme.dim, pad), c(selected ? theme.selectionFg : theme.dim, meta)]
+  const metaFg = selected ? theme.selectionFg : (row.metaFg ?? theme.dim)
+  return [c(fg, label), c(theme.dim, pad), c(metaFg, meta)]
 }
 
 /** The highlight lives on the row, because a text node ignores `bg`. */

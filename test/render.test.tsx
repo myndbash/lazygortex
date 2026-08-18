@@ -12,7 +12,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { testRender } from "@opentui/solid"
 import type { TestRendererSetup } from "@opentui/core/testing"
 import { App } from "../src/ui/App.tsx"
-import { repoRows } from "../src/state/store.ts"
+import { projectRows, repoRows } from "../src/state/store.ts"
+import { theme } from "../src/ui/theme.ts"
 import { GORTEX_BIN } from "../src/gortex/client.ts"
 import { refresh, resetState, restoreView, state } from "../src/state/store.ts"
 
@@ -84,12 +85,12 @@ maybe("lazygortex", () => {
     const frame = setup.captureCharFrame()
 
     expect(frame).toContain("lazygortex")
-    const positions = ["Repos", "Workspaces", "Sessions", "Savings", "Daemon", "Logs"].map((panel) =>
+    const positions = ["Repos", "Workspaces", "Projects", "Sessions", "Savings", "Daemon", "Logs"].map((panel) =>
       frame.indexOf(panel),
     )
     expect(positions.every((index) => index >= 0)).toBe(true)
     // Daemon sits immediately before Logs, at the end of the column
-    expect(positions[4]).toBeLessThan(positions[5]!)
+    expect(positions[5]).toBeLessThan(positions[6]!)
     expect(state.panel).toBe("repos")
     expect(frame).toContain("freshness")
   })
@@ -143,6 +144,39 @@ maybe("lazygortex", () => {
     expect(state.panel).toBe("sessions")
   })
 
+  test("the projects panel groups repos by their declared slug", async () => {
+    setup.mockInput.pressKey("3")
+    await setup.flush()
+    expect(state.panel).toBe("projects")
+
+    await setup.waitForFrame((frame) => frame.includes("── members"), PASSES)
+    const frame = setup.captureCharFrame()
+    expect(frame).toContain("declared in")
+    expect(frame).toContain("┌")
+
+    // every tracked repo belongs to exactly one project
+    const grouped = projectRows().reduce((total, project) => total + project.members.length, 0)
+    expect(grouped).toBe(repoRows().length)
+  })
+
+  test("row fragments carry their own colour", async () => {
+    setup.mockInput.pressKey("1")
+    await setup.flush()
+    await setup.renderOnce()
+
+    // a fresh repo's row is green — inline fragments used to lose their colour
+    // entirely, which is the regression this guards
+    const fresh = repoRows().find((repo) => repo.freshness === "fresh")
+    expect(fresh).toBeTruthy()
+
+    const spans = setup.captureSpans().lines.flatMap((line) => line.spans)
+    const row = spans.find((span) => span.text.includes(`● ${fresh!.name}`))
+    expect(row).toBeTruthy()
+    const hex = (span: (typeof spans)[number]) =>
+      `#${[0, 1, 2].map((index) => (span.fg.buffer[index] ?? 0).toString(16).padStart(2, "0")).join("")}`
+    expect(hex(row!)).toBe(theme.ok)
+  })
+
   test("the selected row is painted, not just marked", async () => {
     setup.mockInput.pressKey("1")
     await setup.flush()
@@ -169,11 +203,11 @@ maybe("lazygortex", () => {
     await setup.renderOnce()
 
     const frame = setup.captureCharFrame()
-    for (const panel of ["1 Repos", "2 Workspaces", "5 Daemon", "6 Logs"]) {
+    for (const panel of ["1 Repos", "2 Workspaces", "3 Projects", "6 Daemon", "7 Logs"]) {
       expect(frame).toContain(panel)
     }
     // only the focused panel keeps its box
-    expect(frame).not.toContain("╭─ 6 Logs")
+    expect(frame).not.toContain("╭─ 7 Logs")
     setup.resize(110, 34)
     await setup.flush()
   })
@@ -209,7 +243,7 @@ maybe("lazygortex", () => {
   })
 
   test("a destructive action asks for confirmation first", async () => {
-    setup.mockInput.pressKey("5")
+    setup.mockInput.pressKey("6")
     await setup.flush()
     expect(state.panel).toBe("daemon")
 
@@ -229,7 +263,7 @@ maybe("lazygortex", () => {
   })
 
   test("the logs panel renders daemon log lines", async () => {
-    setup.mockInput.pressKey("6")
+    setup.mockInput.pressKey("7")
     await setup.flush()
     expect(state.panel).toBe("logs")
 

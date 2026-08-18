@@ -6,6 +6,7 @@
 import type { KeyEvent } from "@opentui/core"
 import {
   actions,
+  currentProject,
   currentRepo,
   currentWorkspace,
   cyclePanel,
@@ -266,6 +267,20 @@ export function panelBindings(): Binding[] {
           (via) => notify("success", `copied ${repo.path} (${via})`),
           (error: unknown) => notify("error", `copy failed: ${error instanceof Error ? error.message : error}`),
         )
+      },
+    },
+
+    // ----- projects -----
+    filterPrompt("projects", "projects"),
+    {
+      keys: ["y"],
+      panels: ["projects"],
+      label: "y",
+      description: "yank the project slug",
+      run: () => {
+        const project = currentProject()
+        if (!project) return notify("error", "no project selected")
+        void copyToClipboard(project.key).then((via) => notify("success", `copied ${project.key} (${via})`))
       },
     },
 

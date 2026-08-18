@@ -1,30 +1,17 @@
 /**
  * Multi-coloured text rows.
  *
- * The Solid binding's built-in `<span>` has no colour props in its types, and a
- * `StyledText` passed as a child accumulates chunks on every update instead of
- * replacing them. Registering a plain `TextNodeRenderable` as `styled_span`
- * sidesteps both problems and reconciles like any other element.
+ * OpenTUI 0.5.3 drops colour on inline text nodes: `<span fg>`, `<b fg>` and a
+ * custom `TextNodeRenderable` all render in the default foreground, and a
+ * `StyledText` handed to `content` is stringified while one handed to
+ * `children` accumulates chunks on every update. Only `<text fg>` paints, so a
+ * row is a flex line of small `<text>` elements, and the highlight is the
+ * background of the box holding them.
  */
 
 import { For } from "solid-js"
-import { TextAttributes, TextNodeRenderable, type TextNodeOptions } from "@opentui/core"
-import { extend } from "@opentui/solid"
+import { TextAttributes } from "@opentui/core"
 import { theme } from "./theme.ts"
-
-class StyledSpanRenderable extends TextNodeRenderable {
-  constructor(_ctx: unknown, options: TextNodeOptions) {
-    super(options)
-  }
-}
-
-extend({ styled_span: StyledSpanRenderable as never })
-
-declare module "@opentui/solid" {
-  interface OpenTUIComponents {
-    styled_span: typeof StyledSpanRenderable
-  }
-}
 
 export interface Piece {
   text: string
@@ -34,28 +21,40 @@ export interface Piece {
 
 export type MaybePiece = Piece | false | null | undefined | ""
 
-/**
- * A coloured fragment of a row.
- *
- * Fragments carry no background: OpenTUI ignores `bg` on a text node, so a
- * highlight has to be set on the row itself via `<Row bg>`.
- */
+/** A coloured fragment of a row. */
 export function c(fg: string, text: string | number, options: { bold?: boolean } = {}): Piece {
   return { text: String(text), fg, ...options }
 }
 
-/** One line built from coloured fragments; falsy fragments are dropped. */
+/**
+ * One line built from coloured fragments; falsy fragments are dropped.
+ * A row is exactly one line tall — overflowing content is clipped, never
+ * wrapped, so lists and tables stay aligned.
+ */
 export function Row(props: { parts: MaybePiece[]; bg?: string }) {
   const parts = () => props.parts.filter((part): part is Piece => Boolean(part))
   return (
-    <text bg={props.bg} style={{ flexShrink: 0 }}>
+    <box
+      style={{
+        flexDirection: "row",
+        flexShrink: 0,
+        height: 1,
+        overflow: "hidden",
+        backgroundColor: props.bg,
+      }}
+    >
       <For each={parts()}>
         {(part) => (
-          <styled_span fg={part.fg ?? theme.text} attributes={part.bold ? TextAttributes.BOLD : undefined}>
+          <text
+            fg={part.fg ?? theme.text}
+            bg={props.bg}
+            attributes={part.bold ? TextAttributes.BOLD : undefined}
+            style={{ flexShrink: 0 }}
+          >
             {part.text}
-          </styled_span>
+          </text>
         )}
       </For>
-    </text>
+    </box>
   )
 }
