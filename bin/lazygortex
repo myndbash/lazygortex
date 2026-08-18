@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Launcher: run the TUI from a checkout, from any working directory.
+#
+# The Solid JSX transform is installed by a Bun preload. In the repo it comes
+# from bunfig.toml, but bun reads bunfig from the *caller's* cwd, so the
+# launcher points at the preload explicitly. cwd is deliberately left alone:
+# the "track a repository" prompt defaults to the directory you started in.
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec bun --preload "$root/node_modules/@opentui/solid/scripts/preload.js" "$root/src/index.tsx" "$@"
