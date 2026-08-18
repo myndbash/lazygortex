@@ -52,7 +52,7 @@ jobs:
         working-directory: dist
         run: shasum -a 256 "lazygortex-${{ matrix.name }}" > "lazygortex-${{ matrix.name }}.sha256"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}
           path: |
