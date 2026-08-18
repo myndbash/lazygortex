@@ -9,12 +9,14 @@ import {
   listLength,
   PANELS,
   refresh,
+  repoRows,
   restoreView,
   startPolling,
   state,
   setState,
 } from "../state/store.ts"
 import { handleKey, keyId } from "./keymap.ts"
+import { stateColor } from "./semantics.ts"
 import { MainPane } from "./MainPane.tsx"
 import { Overlays } from "./Overlays.tsx"
 import { SidePanel } from "./SidePanel.tsx"
@@ -34,8 +36,9 @@ function Header(props: { width: number }) {
     if (state.status.error && !status()) return { mark: glyph.bad, text: "unreachable", fg: theme.error }
     if (!status()) return { mark: glyph.warn, text: "connecting…", fg: theme.dim }
     if (!status()?.running) return { mark: glyph.bad, text: "stopped", fg: theme.error }
-    return { mark: glyph.ok, text: status()?.state ?? "running", fg: theme.ok }
+    return { mark: glyph.ok, text: status()?.state ?? "running", fg: stateColor(status()?.state) }
   }
+  const stale = () => repoRows({ filtered: false }).filter((repo) => repo.freshness === "stale").length
 
   return (
     <box
@@ -56,14 +59,15 @@ function Header(props: { width: number }) {
           status()?.uptime ? c(theme.dim, ` ${glyph.bullet} up ${status()?.uptime}`) : "",
         ]}
       />
-      <text fg={theme.dim}>
-        {truncate(
-          `${status()?.repos.length ?? 0} repos ${glyph.bullet} ${status()?.mcpSessions.length ?? 0} sessions ${
-            status()?.version ? `${glyph.bullet} ${status()?.version}` : ""
-          }`,
-          Math.max(10, Math.floor(props.width / 2)),
-        )}
-      </text>
+      <Row
+        parts={[
+          c(stale() ? theme.warn : theme.muted, `${status()?.repos.length ?? 0} repos`),
+          stale() ? c(theme.warn, ` (${stale()} stale)`) : "",
+          c(theme.dim, `  ${glyph.bullet}  `),
+          c(theme.muted, `${status()?.mcpSessions.length ?? 0} sessions`),
+          c(theme.dim, status()?.version ? `  ${glyph.bullet}  ${status()?.version}` : ""),
+        ]}
+      />
     </box>
   )
 }
