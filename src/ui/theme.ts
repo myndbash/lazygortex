@@ -25,6 +25,7 @@ export const glyph = {
   warn: "◐",
   bad: "○",
   stale: "▲",
+  unversioned: "◌",
   arrow: "›",
   bullet: "·",
   sep: "│",

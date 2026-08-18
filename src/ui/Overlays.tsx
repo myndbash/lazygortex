@@ -6,6 +6,7 @@
 import { For, Match, Show, Switch, createSignal, type Accessor } from "solid-js"
 import { closeOverlay, PANEL_TITLES, state, type Overlay } from "../state/store.ts"
 import { globalBindings, panelBindings, type Binding } from "./keymap.ts"
+import { FRESHNESS } from "./SidePanel.tsx"
 import { c, Row } from "./Row.tsx"
 import { glyph, theme, truncate } from "./theme.ts"
 
@@ -79,24 +80,45 @@ function HelpOverlay() {
       </box>
       <Row parts={[c(theme.info, "1…6".padEnd(8)), c(theme.text, "jump straight to a panel")]} />
       <text> </text>
-      <text fg={theme.dim}>esc or ? to close</text>
+      <text fg={theme.accent}>{"── repository marks "}</text>
+      <Row parts={[c(FRESHNESS.fresh.fg, `${FRESHNESS.fresh.mark} fresh    `), c(theme.text, FRESHNESS.fresh.label)]} />
+      <Row
+        parts={[
+          c(FRESHNESS.stale.fg, `${FRESHNESS.stale.mark} stale    `),
+          c(theme.text, `${FRESHNESS.stale.label} — press R to re-index`),
+        ]}
+      />
+      <Row
+        parts={[
+          c(FRESHNESS.unversioned.fg, `${FRESHNESS.unversioned.mark} no git   `),
+          c(theme.text, FRESHNESS.unversioned.label),
+        ]}
+      />
+      <Row
+        parts={[
+          c(FRESHNESS.unindexed.fg, `${FRESHNESS.unindexed.mark} unindexed`),
+          c(theme.text, FRESHNESS.unindexed.label),
+        ]}
+      />
+      <text> </text>
+      <text fg={theme.dim}>esc or ? to close · panels, rows and buttons also respond to the mouse</text>
     </Frame>
   )
 }
 
-function ConfirmOverlay(props: { title: string; body: string; confirmLabel: string }) {
+function ConfirmOverlay(props: { title: string; body: string; confirmLabel: string; onConfirm: () => void }) {
   return (
     <Frame title={props.title} width={64}>
       <For each={props.body.split("\n")}>{(row) => <text fg={theme.text}>{row || " "}</text>}</For>
       <text> </text>
-      <Row
-        parts={[
-          c(theme.ok, "y/enter"),
-          c(theme.muted, ` ${props.confirmLabel} `),
-          c(theme.error, "n/esc"),
-          c(theme.muted, " cancel"),
-        ]}
-      />
+      <box style={{ flexDirection: "row", flexShrink: 0 }}>
+        <box style={{ flexShrink: 0 }} onMouseDown={props.onConfirm}>
+          <Row parts={[c(theme.ok, "y/enter"), c(theme.muted, `  ${props.confirmLabel}    `)]} />
+        </box>
+        <box style={{ flexShrink: 0 }} onMouseDown={closeOverlay}>
+          <Row parts={[c(theme.error, "n/esc"), c(theme.muted, "  cancel")]} />
+        </box>
+      </box>
     </Frame>
   )
 }
@@ -130,11 +152,25 @@ function PromptOverlay(props: { title: string; body: string; initial: string; on
   )
 }
 
-function MenuOverlay(props: { title: string; options: Array<{ label: string; value: string }> }) {
+function MenuOverlay(props: {
+  title: string
+  options: Array<{ label: string; value: string }>
+  onPick: (value: string) => void
+}) {
   return (
     <Frame title={props.title} width={54}>
       <For each={props.options}>
-        {(option, index) => <Row parts={[c(theme.accent, `${index() + 1} `), c(theme.text, option.label)]} />}
+        {(option, index) => (
+          <box
+            style={{ height: 1, flexShrink: 0 }}
+            onMouseDown={() => {
+              closeOverlay()
+              props.onPick(option.value)
+            }}
+          >
+            <Row parts={[c(theme.accent, `${index() + 1}  `), c(theme.text, option.label)]} />
+          </box>
+        )}
       </For>
       <text> </text>
       <text fg={theme.dim}>press a number {glyph.bullet} esc to cancel</text>
@@ -157,7 +193,15 @@ export function Overlays() {
       </Match>
       <Match when={pick("confirm")}>
         {(data: Accessor<OverlayOf<"confirm">>) => (
-          <ConfirmOverlay title={data().title} body={data().body} confirmLabel={data().confirmLabel} />
+          <ConfirmOverlay
+            title={data().title}
+            body={data().body}
+            confirmLabel={data().confirmLabel}
+            onConfirm={() => {
+              closeOverlay()
+              data().onConfirm()
+            }}
+          />
         )}
       </Match>
       <Match when={pick("prompt")}>
@@ -166,7 +210,9 @@ export function Overlays() {
         )}
       </Match>
       <Match when={pick("menu")}>
-        {(data: Accessor<OverlayOf<"menu">>) => <MenuOverlay title={data().title} options={data().options} />}
+        {(data: Accessor<OverlayOf<"menu">>) => (
+          <MenuOverlay title={data().title} options={data().options} onPick={data().onPick} />
+        )}
       </Match>
     </Switch>
   )

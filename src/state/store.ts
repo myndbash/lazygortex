@@ -8,19 +8,34 @@
 
 import { createStore, produce } from "solid-js/store"
 import * as gortex from "../gortex/client.ts"
-import { errorMessage } from "../gortex/parse.ts"
 import type { EnrichKind } from "../gortex/client.ts"
-import type { DaemonStatus, GraphSummary, IndexHealth, Repo, Savings } from "../gortex/types.ts"
+import { errorMessage } from "../gortex/parse.ts"
+import type {
+  AnalyzeKind,
+  CommandResult,
+  DaemonStatus,
+  GraphSummary,
+  IndexHealth,
+  Repo,
+  Savings,
+  WorkspaceDeclaration,
+} from "../gortex/types.ts"
+import { loadPersisted, savePersisted } from "./persist.ts"
 
-export const PANELS = ["daemon", "repos", "workspaces", "sessions", "savings", "logs"] as const
+/**
+ * Panel order. Repos leads because it is what people come for; Daemon sits
+ * immediately before Logs at the end, where the plumbing belongs.
+ */
+export const PANELS = ["repos", "analyze", "workspaces", "sessions", "savings", "daemon", "logs"] as const
 export type PanelId = (typeof PANELS)[number]
 
 export const PANEL_TITLES: Record<PanelId, string> = {
-  daemon: "Daemon",
   repos: "Repos",
+  analyze: "Analyze",
   workspaces: "Workspaces",
   sessions: "Sessions",
   savings: "Savings",
+  daemon: "Daemon",
   logs: "Logs",
 }
 
@@ -47,20 +62,17 @@ export interface Message {
 export type Overlay =
   | { kind: "help" }
   | { kind: "confirm"; title: string; body: string; confirmLabel: string; onConfirm: () => void }
+  | { kind: "prompt"; title: string; body: string; initial: string; onSubmit: (value: string) => void }
   | {
-      kind: "prompt"
+      kind: "menu"
       title: string
-      body: string
-      initial: string
-      onSubmit: (value: string) => void
+      options: Array<{ label: string; value: string }>
+      onPick: (value: string) => void
     }
-  | { kind: "menu"; title: string; options: Array<{ label: string; value: string }>; onPick: (value: string) => void }
 
-export interface RepoDetail {
-  /** repo path the detail belongs to */
-  path: string
-  graph: Async<GraphSummary>
-  index: Async<IndexHealth>
+export interface Analysis {
+  kind: string
+  result: unknown
 }
 
 export interface State {
@@ -68,12 +80,18 @@ export interface State {
   /** which column has the keyboard: the panel list or the detail pane */
   focus: "side" | "main"
   cursor: Record<PanelId, number>
-  filter: string
+  filter: Record<PanelId, string>
   status: Async<DaemonStatus>
   repos: Async<Repo[]>
   savings: Async<Savings>
   logs: Async<string[]>
-  detail: RepoDetail | null
+  /** index-wide graph summary, with a per-repo breakdown; one slow call */
+  graph: Async<GraphSummary>
+  /** index-wide health report */
+  index: Async<IndexHealth>
+  declarations: Async<WorkspaceDeclaration[]>
+  kinds: Async<AnalyzeKind[]>
+  analysis: Async<Analysis>
   /** label of the command currently running, if any */
   busy: string | null
   message: Message | null
@@ -82,17 +100,29 @@ export interface State {
   quitting: boolean
 }
 
+function zeroCursors(): Record<PanelId, number> {
+  return Object.fromEntries(PANELS.map((panel) => [panel, 0])) as Record<PanelId, number>
+}
+
+function noFilters(): Record<PanelId, string> {
+  return Object.fromEntries(PANELS.map((panel) => [panel, ""])) as Record<PanelId, string>
+}
+
 function initialState(): State {
   return {
-    panel: "daemon",
+    panel: "repos",
     focus: "side",
-    cursor: { daemon: 0, repos: 0, workspaces: 0, sessions: 0, savings: 0, logs: 0 },
-    filter: "",
+    cursor: zeroCursors(),
+    filter: noFilters(),
     status: empty<DaemonStatus>(),
     repos: empty<Repo[]>(),
     savings: empty<Savings>(),
     logs: empty<string[]>(),
-    detail: null,
+    graph: empty<GraphSummary>(),
+    index: empty<IndexHealth>(),
+    declarations: empty<WorkspaceDeclaration[]>(),
+    kinds: empty<AnalyzeKind[]>(),
+    analysis: empty<Analysis>(),
     busy: null,
     message: null,
     overlay: null,
@@ -106,7 +136,6 @@ export const [state, setState] = createStore<State>(initialState())
 /** Back to a freshly-started app; used by the frame tests. */
 export function resetState(): void {
   inFlight.clear()
-  detailToken++
   setState(initialState())
 }
 
@@ -126,13 +155,24 @@ export function clearMessage(): void {
 // async slots
 // ---------------------------------------------------------------------------
 
-type SlotKey = "status" | "repos" | "savings" | "logs"
+type SlotKey = "status" | "repos" | "savings" | "logs" | "graph" | "index" | "declarations" | "kinds" | "analysis"
 
-const inFlight = new Set<SlotKey>()
+/**
+ * One load per slot at a time. A caller that arrives mid-flight waits for the
+ * running load instead of being dropped, so `await refresh.x()` always means
+ * "the slot is populated".
+ */
+const inFlight = new Map<SlotKey, Promise<void>>()
 
-async function load<K extends SlotKey>(key: K, fetcher: () => Promise<State[K]["data"]>): Promise<void> {
-  if (inFlight.has(key)) return
-  inFlight.add(key)
+function load<K extends SlotKey>(key: K, fetcher: () => Promise<State[K]["data"]>): Promise<void> {
+  const running = inFlight.get(key)
+  if (running) return running
+  const promise = runLoad(key, fetcher)
+  inFlight.set(key, promise)
+  return promise
+}
+
+async function runLoad<K extends SlotKey>(key: K, fetcher: () => Promise<State[K]["data"]>): Promise<void> {
   setState(
     produce((draft) => {
       ;(draft[key] as Async<unknown>).loading = true
@@ -163,13 +203,46 @@ async function load<K extends SlotKey>(key: K, fetcher: () => Promise<State[K]["
   }
 }
 
+/** Any tracked repo works as the entry point for index-wide calls. */
+function anyRepoPath(): string | null {
+  return state.repos.data?.[0]?.path ?? state.status.data?.repos[0]?.path ?? null
+}
+
 export const refresh = {
   status: () => load("status", () => gortex.daemonStatus()),
   repos: () => load("repos", () => gortex.repos()),
   savings: () => load("savings", () => gortex.savings()),
   logs: () => load("logs", () => gortex.logs(state.logTail)),
+  declarations: () => load("declarations", () => gortex.workspaceList()),
+  graph: async () => {
+    const path = anyRepoPath()
+    if (!path) return
+    await load("graph", () => gortex.graphSummary(path))
+  },
+  index: async () => {
+    const path = anyRepoPath()
+    if (!path) return
+    await load("index", () => gortex.indexHealth(path))
+  },
+  kinds: async () => {
+    const path = anyRepoPath()
+    if (!path) return
+    await load("kinds", () => gortex.analyzeKinds(path))
+  },
+  /** the cheap slots, safe to poll */
+  fast: async () => {
+    await Promise.all([refresh.status(), refresh.repos()])
+  },
   all: async () => {
-    await Promise.all([refresh.status(), refresh.repos(), refresh.savings(), refresh.logs()])
+    await refresh.fast()
+    await Promise.all([
+      refresh.savings(),
+      refresh.logs(),
+      refresh.declarations(),
+      refresh.graph(),
+      refresh.index(),
+      refresh.kinds(),
+    ])
   },
   /** whatever the visible panel needs */
   current: async () => {
@@ -178,11 +251,17 @@ export const refresh = {
         return refresh.savings()
       case "logs":
         return refresh.logs()
+      case "workspaces":
+        await Promise.all([refresh.status(), refresh.declarations()])
+        return
+      case "analyze":
+        return refresh.kinds()
       case "repos":
-        await Promise.all([refresh.repos(), refresh.status()])
-        return loadDetail(true)
+        await Promise.all([refresh.fast(), refresh.graph()])
+        return
       default:
-        return Promise.all([refresh.status(), refresh.repos()]).then(() => undefined)
+        await Promise.all([refresh.fast(), refresh.index()])
+        return
     }
   },
 }
@@ -191,14 +270,16 @@ export const refresh = {
 // derived selections
 // ---------------------------------------------------------------------------
 
+export type Freshness = "fresh" | "stale" | "unversioned" | "unindexed"
+
 export interface RepoRow {
   name: string
   path: string
   workspace: string
+  project: string
   branch: string
   head: string
-  stale: boolean
-  indexed: boolean
+  freshness: Freshness
   lastIndexed: string
   files: number
   nodes: number
@@ -206,20 +287,38 @@ export interface RepoRow {
   size: string
 }
 
-/** Merge `gortex repos --json` with the richer `daemon status` table. */
+/**
+ * Merge `gortex repos --json` with the richer `daemon status` table.
+ *
+ * `stale` from the CLI means "HEAD moved past the indexed commit **or** there
+ * is no indexed commit". A directory that is not a git repository can never
+ * satisfy the first test, so it is reported as unversioned rather than stale —
+ * otherwise `~/.config` looks permanently out of date.
+ */
 export function repoRows(): RepoRow[] {
   const list = state.repos.data ?? []
   const daemonRepos = state.status.data?.repos ?? []
+  const declarations = state.declarations.data ?? []
+
   const rows = list.map<RepoRow>((repo) => {
     const extra = daemonRepos.find((row) => row.path === repo.path || row.repo === repo.name)
+    const declared = declarations.find((row) => row.path === repo.path || row.repo === repo.name)
+    const versioned = Boolean(repo.head_commit || repo.branch)
+    const freshness: Freshness = !repo.indexed
+      ? "unindexed"
+      : !versioned
+        ? "unversioned"
+        : repo.stale
+          ? "stale"
+          : "fresh"
     return {
       name: repo.name,
       path: repo.path,
-      workspace: extra?.workspace ?? "",
+      workspace: declared?.workspace ?? extra?.workspace ?? "",
+      project: declared?.project ?? "",
       branch: repo.branch ?? "",
       head: repo.head_commit ?? "",
-      stale: repo.stale,
-      indexed: repo.indexed,
+      freshness,
       lastIndexed: repo.last_indexed ?? "",
       files: extra?.files ?? 0,
       nodes: extra?.nodes ?? 0,
@@ -235,10 +334,10 @@ export function repoRows(): RepoRow[] {
       name: row.repo,
       path: row.path,
       workspace: row.workspace,
+      project: "",
       branch: "",
       head: "",
-      stale: false,
-      indexed: true,
+      freshness: "fresh",
       lastIndexed: "",
       files: row.files,
       nodes: row.nodes,
@@ -247,7 +346,7 @@ export function repoRows(): RepoRow[] {
     })
   }
 
-  const needle = state.filter.trim().toLowerCase()
+  const needle = state.filter.repos.trim().toLowerCase()
   const filtered = needle
     ? rows.filter((row) => row.name.toLowerCase().includes(needle) || row.path.toLowerCase().includes(needle))
     : rows
@@ -257,14 +356,48 @@ export function repoRows(): RepoRow[] {
 export function currentRepo(): RepoRow | null {
   const rows = repoRows()
   if (rows.length === 0) return null
-  const index = Math.min(state.cursor.repos, rows.length - 1)
-  return rows[index] ?? null
+  return rows[Math.min(state.cursor.repos, rows.length - 1)] ?? null
+}
+
+/** The per-repo slice of the index-wide graph summary. */
+export function repoGraph(
+  name: string,
+): { by_kind?: Record<string, number>; by_language?: Record<string, number> } | null {
+  const perRepo = state.graph.data?.["per_repo"]
+  if (!perRepo || typeof perRepo !== "object") return null
+  const entry = (perRepo as Record<string, unknown>)[name]
+  return entry && typeof entry === "object" ? (entry as Record<string, never>) : null
+}
+
+export function analyzeKinds(): AnalyzeKind[] {
+  const kinds = state.kinds.data ?? []
+  const needle = state.filter.analyze.trim().toLowerCase()
+  if (!needle) return kinds
+  return kinds.filter((kind) => kind.name.includes(needle) || kind.description.toLowerCase().includes(needle))
+}
+
+export function currentKind(): AnalyzeKind | null {
+  const kinds = analyzeKinds()
+  if (kinds.length === 0) return null
+  return kinds[Math.min(state.cursor.analyze, kinds.length - 1)] ?? null
+}
+
+export function workspaceNames(): string[] {
+  return (state.status.data?.workspaces ?? []).map((workspace) => workspace.workspace)
+}
+
+export function currentWorkspace(): string | null {
+  const names = workspaceNames()
+  if (names.length === 0) return null
+  return names[Math.min(state.cursor.workspaces, names.length - 1)] ?? null
 }
 
 export function listLength(panel: PanelId): number {
   switch (panel) {
     case "repos":
       return repoRows().length
+    case "analyze":
+      return analyzeKinds().length
     case "workspaces":
       return state.status.data?.workspaces.length ?? 0
     case "sessions":
@@ -279,84 +412,83 @@ export function listLength(panel: PanelId): number {
 }
 
 // ---------------------------------------------------------------------------
-// repo detail (lazy, per selection)
-// ---------------------------------------------------------------------------
-
-let detailToken = 0
-
-export async function loadDetail(force = false): Promise<void> {
-  const repo = currentRepo()
-  if (!repo) {
-    setState("detail", null)
-    return
-  }
-  if (!force && state.detail?.path === repo.path) return
-
-  const token = ++detailToken
-  setState("detail", {
-    path: repo.path,
-    graph: { ...empty<GraphSummary>(), loading: true },
-    index: { ...empty<IndexHealth>(), loading: true },
-  })
-
-  const apply = <K extends "graph" | "index">(key: K, data: unknown, error: string | null) => {
-    if (token !== detailToken) return
-    setState(
-      produce((draft) => {
-        if (!draft.detail || draft.detail.path !== repo.path) return
-        const slot = draft.detail[key] as Async<unknown>
-        slot.loading = false
-        slot.data = data as never
-        slot.error = error
-        if (!error) slot.at = Date.now()
-      }),
-    )
-  }
-
-  await Promise.all([
-    gortex
-      .graphSummary(repo.path)
-      .then((data) => apply("graph", data, null))
-      .catch((error: unknown) => apply("graph", null, error instanceof Error ? error.message : String(error))),
-    gortex
-      .indexHealth(repo.path)
-      .then((data) => apply("index", data, null))
-      .catch((error: unknown) => apply("index", null, error instanceof Error ? error.message : String(error))),
-  ])
-}
-
-// ---------------------------------------------------------------------------
 // navigation
 // ---------------------------------------------------------------------------
 
+/** While restoring, navigation is replaying old state — never write it back. */
+let restoring = false
+
+function remember(): void {
+  if (restoring) return
+  savePersisted({
+    panel: state.panel,
+    repo: currentRepo()?.path,
+    logTail: state.logTail,
+    analyzeKind: currentKind()?.name,
+  })
+}
+
 export function selectPanel(panel: PanelId): void {
-  setState({ panel, focus: "side", filter: "" })
+  setState({ panel, focus: "side" })
   if (panel === "savings" && !state.savings.data) void refresh.savings()
   if (panel === "logs" && !state.logs.data) void refresh.logs()
-  if (panel === "repos") void loadDetail()
+  if (panel === "repos" && !state.graph.data) void refresh.graph()
+  if (panel === "daemon" && !state.index.data) void refresh.index()
+  if (panel === "workspaces" && !state.declarations.data) void refresh.declarations()
+  if (panel === "analyze" && !state.kinds.data) void refresh.kinds()
+  remember()
 }
 
 export function cyclePanel(delta: number): void {
   const index = PANELS.indexOf(state.panel)
-  const next = PANELS[(index + delta + PANELS.length) % PANELS.length]!
-  selectPanel(next)
+  selectPanel(PANELS[(index + delta + PANELS.length) % PANELS.length]!)
+}
+
+export function setCursor(panel: PanelId, index: number): void {
+  const length = listLength(panel)
+  if (length === 0) return
+  setState("cursor", panel, Math.max(0, Math.min(length - 1, index)))
+  remember()
 }
 
 export function moveCursor(delta: number): void {
-  const panel = state.panel
-  const length = listLength(panel)
-  if (length === 0) return
-  const next = Math.max(0, Math.min(length - 1, state.cursor[panel] + delta))
-  setState("cursor", panel, next)
-  if (panel === "repos") void loadDetail()
+  setCursor(state.panel, state.cursor[state.panel] + delta)
 }
 
 export function jumpCursor(position: "top" | "bottom"): void {
-  const panel = state.panel
-  const length = listLength(panel)
-  if (length === 0) return
-  setState("cursor", panel, position === "top" ? 0 : length - 1)
-  if (panel === "repos") void loadDetail()
+  setCursor(state.panel, position === "top" ? 0 : listLength(state.panel) - 1)
+}
+
+/** Restore the panel and selection from the previous session. */
+export async function restoreView(): Promise<void> {
+  const saved = await loadPersisted()
+  restoring = true
+  try {
+    await applyPersisted(saved)
+  } finally {
+    restoring = false
+  }
+}
+
+async function applyPersisted(saved: Awaited<ReturnType<typeof loadPersisted>>): Promise<void> {
+  if (saved.logTail && Number.isFinite(saved.logTail)) setState("logTail", saved.logTail)
+
+  if (saved.repo) {
+    const index = repoRows().findIndex((row) => row.path === saved.repo)
+    if (index >= 0) setState("cursor", "repos", index)
+  }
+
+  // through selectPanel, so the restored panel loads whatever it needs
+  if (saved.panel && (PANELS as readonly string[]).includes(saved.panel)) {
+    selectPanel(saved.panel as PanelId)
+  }
+
+  if (saved.analyzeKind) {
+    // the catalogue has to exist before a kind can be selected in it
+    await refresh.kinds()
+    const index = analyzeKinds().findIndex((kind) => kind.name === saved.analyzeKind)
+    if (index >= 0) setState("cursor", "analyze", index)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -364,7 +496,7 @@ export function jumpCursor(position: "top" | "bottom"): void {
 // ---------------------------------------------------------------------------
 
 /** Run a mutating gortex command with a busy indicator and a result message. */
-export async function command(label: string, action: () => Promise<gortexResult>): Promise<void> {
+export async function command(label: string, action: () => Promise<CommandResult>): Promise<void> {
   if (state.busy) {
     notify("error", `busy: ${state.busy} is still running`)
     return
@@ -374,7 +506,7 @@ export async function command(label: string, action: () => Promise<gortexResult>
   try {
     const result = await action()
     if (result.ok) {
-      notify("success", `${label} ok (${Math.round(result.ms)}ms)`)
+      notify("success", `${label} ok (${(result.ms / 1000).toFixed(1)}s)`)
     } else {
       notify("error", `${label}: ${errorMessage(result.stderr, result.stdout)}`)
     }
@@ -382,12 +514,25 @@ export async function command(label: string, action: () => Promise<gortexResult>
     notify("error", `${label}: ${error instanceof Error ? error.message : String(error)}`)
   } finally {
     setState("busy", null)
-    await refresh.all()
-    if (state.panel === "repos") await loadDetail(true)
+    await refresh.fast()
+    void refresh.graph()
+    void refresh.declarations()
   }
 }
 
-type gortexResult = Awaited<ReturnType<typeof gortex.track>>
+export function isTracked(path: string): boolean {
+  return repoRows().some((row) => row.path === path)
+}
+
+/** Expand `~`, resolve relatives, drop a trailing slash. */
+export function normalizePath(input: string): string {
+  const home = process.env["HOME"] ?? ""
+  let path = input.trim()
+  if (path === "~") path = home
+  else if (path.startsWith("~/")) path = `${home}/${path.slice(2)}`
+  if (!path.startsWith("/")) path = `${process.cwd()}/${path}`
+  return path.length > 1 ? path.replace(/\/+$/, "") : path
+}
 
 export const actions = {
   daemonStart: () => command("daemon start", gortex.daemon.start),
@@ -396,7 +541,34 @@ export const actions = {
   daemonReload: () => command("daemon reload", gortex.daemon.reload),
   track: (path: string) => command(`track ${path}`, () => gortex.track(path)),
   untrack: (path: string) => command(`untrack ${path}`, () => gortex.untrack(path)),
+  reindex: (path: string) => command(`re-index ${path}`, () => gortex.reindex(path)),
   enrich: (kind: EnrichKind, path: string) => command(`enrich ${kind}`, () => gortex.enrich(kind, path)),
+  init: (path: string) => command(`init ${path}`, () => gortex.init(path)),
+  workspaceSet: (path: string, workspace: string, project?: string) =>
+    command(`workspace set ${workspace}${project ? `/${project}` : ""}`, () =>
+      gortex.workspaceSet(path, workspace, project),
+    ),
+}
+
+/** Run one analyzer and keep the result for the detail pane. */
+export async function runAnalysis(kind: string): Promise<void> {
+  const path = anyRepoPath()
+  if (!path) return notify("error", "no tracked repository to analyse")
+  if (state.busy) return notify("error", `busy: ${state.busy} is still running`)
+
+  setState("busy", `analyze ${kind}`)
+  const started = performance.now()
+  try {
+    const result = await gortex.analyze(kind, path)
+    setState("analysis", { data: { kind, result }, error: null, loading: false, at: Date.now() })
+    notify("success", `analyze ${kind} ok (${((performance.now() - started) / 1000).toFixed(1)}s)`)
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error)
+    setState("analysis", { data: null, error: `${kind}: ${text}`, loading: false, at: Date.now() })
+    notify("error", `analyze ${kind}: ${text}`)
+  } finally {
+    setState("busy", null)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -425,6 +597,8 @@ export function startPolling(): () => void {
     setInterval(() => {
       if (state.panel === "savings") void refresh.savings()
     }, 30_000),
+    // the graph call costs over a second; it never belongs on a fast tick
+    setInterval(() => void refresh.graph(), 120_000),
   ]
   return () => timers.forEach(clearInterval)
 }
