@@ -40,7 +40,7 @@ colour, which is how a bug where every fragment rendered white survived several 
   severity, magnitude or recency, it probably should not be there.
 - **Destructive actions confirm first.** Anything that stops the daemon, drops an index or writes
   into a user's repository opens a confirm dialog.
-- Match the surrounding style: no semicolons, 120 columns, comments that explain *why*.
+- Match the surrounding style: no semicolons, 120 columns, comments that explain _why_.
 
 ## Commits
 
@@ -49,7 +49,7 @@ colour, which is how a bug where every fragment rendered white survived several 
 
 ## Releasing
 
-1. Update `CHANGELOG.md` (move items out of *Unreleased*).
+1. Update `CHANGELOG.md` (move items out of _Unreleased_).
 2. Bump the version in `package.json`.
 3. Tag: `git tag v0.2.0 && git push --tags`.
 

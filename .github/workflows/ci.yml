@@ -32,6 +32,9 @@ jobs:
       - name: Format
         run: bun run format:check
 
+      - name: Lint docs
+        run: bun run lint:md
+
       # The frame tests need a gortex daemon and skip themselves without one,
       # so what runs here is the parser and colour units.
       - name: Test
