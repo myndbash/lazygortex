@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Format
+        run: bun run format:check
+
+      # The frame tests need a gortex daemon and skip themselves without one,
+      # so what runs here is the parser and colour units.
+      - name: Test
+        run: bun test
+
+      - name: Build the npm bundle
+        run: bun run build:bundle
+
+      - name: Smoke the bundle
+        run: bun dist/cli.js --version
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - run: bun install --frozen-lockfile
+      - run: bun run build:bundle
+
+      # Prove a stranger can install the tarball and run the binary it exposes.
+      - name: Pack and install into a scratch project
+        run: |
+          bun pm pack --destination /tmp
+          mkdir -p /tmp/consumer && cd /tmp/consumer
+          echo '{"name":"consumer","private":true}' > package.json
+          bun add /tmp/lazygortex-*.tgz
+          ./node_modules/.bin/lazygortex --version

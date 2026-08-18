@@ -1,4 +1,6 @@
-preload = ["@opentui/solid/preload"]
-
+# The Solid transform is loaded explicitly by the `start`/`dev` scripts and by
+# bin/lazygortex, so a compiled binary run from this directory is not affected
+# by a top-level preload. Tests need it here, because `bun test` has no such
+# entry point of its own.
 [test]
 preload = ["@opentui/solid/preload"]

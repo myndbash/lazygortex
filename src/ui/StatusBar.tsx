@@ -13,7 +13,7 @@ const MESSAGE_COLOR = {
 } as const
 
 /** Fit as many `key description` pairs as the bar can show. */
-function hintParts(bindings: Binding[], width: number): Piece[] {
+function hintParts(bindings: Array<Pick<Binding, "label" | "description">>, width: number): Piece[] {
   const parts: Piece[] = []
   let used = 0
   for (const binding of bindings) {
@@ -31,7 +31,14 @@ export function StatusBar(props: { width: number }) {
   const timer = setInterval(() => setFrame((f) => (f + 1) % glyph.spinner.length), 90)
   onCleanup(() => clearInterval(timer))
 
-  const hints = () => activeBindings().filter((binding) => binding.hint)
+  // with no CLI there is nothing to act on but quitting and retrying
+  const hints = () =>
+    state.binary.ok === false
+      ? [
+          { label: "r", description: "check again" },
+          { label: "q", description: "quit" },
+        ]
+      : activeBindings().filter((binding) => binding.hint)
 
   return (
     <box style={{ flexDirection: "column", flexShrink: 0, backgroundColor: theme.bg }}>

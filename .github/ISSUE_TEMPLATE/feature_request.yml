@@ -1,0 +1,21 @@
+name: Feature request
+description: A panel, action or keybinding you are missing
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: The workflow you want, not just the feature. What do you run today instead?
+    validations:
+      required: true
+  - type: textarea
+    id: shape
+    attributes:
+      label: What it might look like
+      description: Which panel it belongs to, which key, what the detail pane would show.
+  - type: input
+    id: cli
+    attributes:
+      label: Which gortex command backs it
+      description: lazygortex only shows what the CLI can answer.

@@ -1,0 +1,42 @@
+name: Bug report
+description: Something in the TUI misbehaves
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. A screenshot of the panel involved is worth a lot here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: lazygortex version
+      description: "`lazygortex --version`"
+      placeholder: lazygortex 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: gortex
+    attributes:
+      label: gortex version
+      description: "`gortex version`"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS, terminal and Bun version
+      placeholder: Arch Linux, ghostty 1.2, bun 1.3.14
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Terminal size if layout is involved, log output, a screenshot.
