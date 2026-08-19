@@ -14,6 +14,7 @@ import { Header, visiblePanels } from "../src/ui/App.tsx"
 import { Overlays } from "../src/ui/Overlays.tsx"
 import { SidePanel } from "../src/ui/SidePanel.tsx"
 import { StatusBar } from "../src/ui/StatusBar.tsx"
+import { LogsDetail } from "../src/ui/MainPane.tsx"
 import { Table, type Column, type TableRow } from "../src/ui/Table.tsx"
 import { clearMessage, closeOverlay, notify, openOverlay, PANELS, resetState, setState } from "../src/state/store.ts"
 import type { Repo } from "../src/gortex/types.ts"
@@ -314,5 +315,42 @@ describe("the status bar", () => {
 
     const frame = await render(() => <StatusBar width={80} />, 80, 3)
     expect(frame).toContain("re-index /home/u/alpha")
+  })
+})
+
+describe("the logs view", () => {
+  test("renders a bounded window and says how many older lines it holds", async () => {
+    setState("panel", "logs")
+    setState(
+      "logs",
+      "data",
+      Array.from({ length: 1000 }, (_, index) => `log line number ${index}`),
+    )
+
+    // the detail view on its own: the App starts a three-second refresh for this
+    // panel that would replace the buffer under the assertion, and MainPane's
+    // scrollbox sticks to the bottom, which scrolls the marker out of the frame.
+    // The viewport is taller than the window because opentui clamps children
+    // that do not fit back inside their parent, where they overpaint each other.
+    const frame = await render(() => <LogsDetail />, 110, 520)
+
+    expect(frame).toContain("500 older of 1000 buffered lines not shown")
+    // the window starts at 500: the pane shows the top of what it rendered
+    expect(frame).toContain("log line number 500")
+    expect(frame).not.toContain("log line number 499")
+  })
+
+  test("renders the whole buffer when it fits inside the window", async () => {
+    setState("panel", "logs")
+    setState(
+      "logs",
+      "data",
+      Array.from({ length: 12 }, (_, index) => `log line number ${index}`),
+    )
+
+    const frame = await render(() => <LogsDetail />, 110, 34)
+
+    expect(frame).toContain("log line number 0")
+    expect(frame).not.toContain("older of")
   })
 })

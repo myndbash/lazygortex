@@ -471,25 +471,17 @@ maybe("lazygortex", () => {
     expect(setup.captureCharFrame()).toContain("timeout after 20000ms")
   })
 
-  test("the logs view renders a bounded window and says what it left out", async () => {
+  test("the logs panel is the one the poll keeps feeding", async () => {
     setup.mockInput.pressKey("7")
     await setup.flush()
     expect(state.panel).toBe("logs")
 
-    // the tail key can reach 5000 lines, and every one used to become a live
-    // renderable that the 3-second poll tore down and rebuilt
-    setState(
-      "logs",
-      "data",
-      Array.from({ length: 1000 }, (_, index) => `log line number ${index}`),
-    )
-    await setup.flush()
-
-    const frame = setup.captureCharFrame()
-    expect(frame).toContain("500 older of 1000 buffered lines not shown")
-    // the window starts at 500: the pane is showing the top of what it rendered
-    expect(frame).toContain("log line number 500")
-    expect(frame).not.toContain("log line number 499")
+    // what the window does with a large buffer is asserted in layout.test.tsx,
+    // against a MainPane with no polling behind it: seeding state.logs here and
+    // reading the frame afterwards races the 3-second refresh this panel starts,
+    // and loses whenever the poll lands between the two
+    await until(() => (state.logs.data?.length ?? 0) > 0)
+    expect(setup.captureCharFrame()).toContain("Daemon logs")
   })
 
   test("tracking a repo the daemon already has is refused, not re-run", async () => {

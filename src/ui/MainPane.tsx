@@ -541,7 +541,7 @@ export function windowLines<T>(lines: T[], limit: number = LOG_WINDOW): { visibl
   return { visible: lines.slice(lines.length - limit), hidden: lines.length - limit }
 }
 
-function LogsDetail() {
+export function LogsDetail() {
   const view = createMemo(() => {
     const raw = (state.logs.data ?? []).filter((row) => row.trim().length > 0)
     const { visible, hidden } = windowLines(raw)
