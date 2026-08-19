@@ -16,12 +16,12 @@ left, a detail pane on the right, one keystroke per action — and the mouse wor
 
 ```text
  lazygortex │ ● daemon ready · up 4h26m                      5 repos · 9 sessions · v0.63.3
-╭─ 1 Repos ──────────────────────────╮╭─ emc2 · ~/Work/emc2 ─────────────────────────────────────────╮
-│ ◌ .config                   181.0k ││ ── emc2                                                      │
-│ ● inline                     11.8k ││ path            ~/Work/emc2                                  │
-│ ● emc2                        9.2k ││ workspace       org/beta                                     │
-│ ● bridge                      2.7k ││ branch          master                                       │
-│ ● ti-gerr                     2.1k ││ freshness       ● fresh — index matches HEAD                 │
+╭─ 1 Repos ──────────────────────────╮╭─ beta · ~/Work/beta ─────────────────────────────────────────╮
+│ ◌ .config                   181.0k ││ ── beta                                                      │
+│ ● parser                     11.8k ││ path            ~/Work/beta                                  │
+│ ● beta                        9.2k ││ workspace       org/beta                                     │
+│ ● ledger                      2.7k ││ branch          master                                       │
+│ ● gamma01                     2.1k ││ freshness       ● fresh — index matches HEAD                 │
 │                                    ││ last indexed    16h ago                                      │
 │                                    ││                                                              │
 │                                    ││ ── index size                                                │
@@ -31,7 +31,7 @@ left, a detail pane on the right, one keystroke per action — and the mouse wor
 │ 2 workspaces                       ││ │   672 │  9.2k │  35.9k │ 6.6 MiB │                         │
 ╰────────────────────────────────────╯│ └───────┴───────┴────────┴─────────┘                         │
 ╭─ 3 Projects ───────────────────────╮│                                                              │
-│ ti-gerr                    2 repos ││ ── graph                                                     │
+│ gamma01                    2 repos ││ ── graph                                                     │
 ╰────────────────────────────────────╯│ by kind                                                      │
 ╭─ 4 Sessions ───────────────────────╮│ variable       ██████████████████ 147.2k                     │
 │ 9 connected                        ││ function       ██░░░░░░░░░░░░░░░░ 16.6k                      │
