@@ -8,14 +8,14 @@
  * puts the app back to its start-up state between tests.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test"
 import { testRender } from "@opentui/solid"
 import type { TestRendererSetup } from "@opentui/core/testing"
 import { App } from "../src/ui/App.tsx"
 import { projectRows, repoRows } from "../src/state/store.ts"
 import { theme } from "../src/ui/theme.ts"
 import { GORTEX_BIN } from "../src/gortex/client.ts"
-import { refresh, resetState, restoreView, setState, state } from "../src/state/store.ts"
+import { closeOverlay, refresh, resetState, restoreView, setState, state } from "../src/state/store.ts"
 
 const available = await Bun.file(GORTEX_BIN)
   .exists()
@@ -78,6 +78,13 @@ maybe("lazygortex", () => {
     resetState()
     void refresh.all()
     await settle()
+    await setup.flush()
+  })
+
+  // an overlay left open outlives this file: its <input> keeps a handler on the
+  // key-handler singleton, and it would then swallow another file's keystrokes
+  afterEach(async () => {
+    closeOverlay()
     await setup.flush()
   })
 
@@ -314,6 +321,47 @@ maybe("lazygortex", () => {
         .catch(() => {})
     }
   }, 40_000)
+
+  test("the / prompt filters the repo list, and says so on screen", async () => {
+    const tracked = repoRows({ filtered: false }).length
+    expect(tracked).toBeGreaterThan(0)
+
+    setup.mockInput.pressKey("/")
+    await setup.flush()
+    expect(state.overlay?.kind).toBe("prompt")
+
+    await setup.mockInput.typeText("zzz")
+    setup.mockInput.pressEnter()
+    await setup.flush()
+
+    expect(state.filter.repos).toBe("zzz")
+    expect(state.overlay).toBeNull()
+    expect(repoRows()).toHaveLength(0)
+
+    // the needle rides on the panel title, and the empty list says why it is empty
+    let frame = setup.captureCharFrame()
+    expect(frame).toContain("Repos /zzz")
+    expect(frame).toContain("no match for /zzz")
+
+    // and once the panel collapses to its summary, both counts are shown
+    setup.mockInput.pressKey("2")
+    await setup.flush()
+    frame = setup.captureCharFrame()
+    expect(frame).toContain(`0 of ${tracked} tracked`)
+
+    // clearing it through the same prompt puts the list back
+    setup.mockInput.pressKey("1")
+    await setup.flush()
+    setup.mockInput.pressKey("/")
+    await setup.flush()
+    for (let index = 0; index < 8; index++) setup.mockInput.pressBackspace()
+    setup.mockInput.pressEnter()
+    await setup.flush()
+
+    expect(state.filter.repos).toBe("")
+    expect(repoRows()).toHaveLength(tracked)
+    expect(setup.captureCharFrame()).not.toContain("Repos /")
+  })
 
   test("tracking a repo the daemon already has is refused, not re-run", async () => {
     const tracked = state.repos.data?.[0]?.path

@@ -133,12 +133,7 @@ function PromptOverlay(props: { title: string; body: string; initial: string; on
         focused
         value={value()}
         onInput={setValue}
-        onSubmit={
-          ((submitted: string) => {
-            closeOverlay()
-            props.onSubmit(submitted)
-          }) as never
-        }
+        onSubmit={((submitted: string) => props.onSubmit(submitted)) as never}
         style={{
           backgroundColor: theme.panel,
           focusedBackgroundColor: theme.panel,
@@ -161,13 +156,7 @@ function MenuOverlay(props: {
     <Frame title={props.title} width={54}>
       <For each={props.options}>
         {(option, index) => (
-          <box
-            style={{ height: 1, flexShrink: 0 }}
-            onMouseDown={() => {
-              closeOverlay()
-              props.onPick(option.value)
-            }}
-          >
+          <box style={{ height: 1, flexShrink: 0 }} onMouseDown={() => props.onPick(option.value)}>
             <Row parts={[c(theme.accent, `${index() + 1}  `), c(theme.text, option.label)]} />
           </box>
         )}
@@ -185,6 +174,25 @@ function pick<K extends Overlay["kind"]>(kind: K): OverlayOf<K> | undefined {
   return overlay?.kind === kind ? (overlay as OverlayOf<K>) : undefined
 }
 
+/**
+ * Tear the overlay down, then run what it asked for.
+ *
+ * The order matters both ways round. Closing first is what the keyboard path
+ * does, so a callback that opens a second overlay is not immediately undone —
+ * but `closeOverlay()` falsifies the `<Match>` condition these components live
+ * under, and any read of the overlay record after that throws
+ * `Stale read from <Match>.`, which opentui swallows into a hidden console.
+ * So every call site reads the callback out of the overlay record as this
+ * function's argument — evaluated while the match still holds — and the close
+ * happens in here, after it. Children never call `closeOverlay()` before
+ * reading a prop; the parent owns the teardown, so the trap cannot come back
+ * with the next overlay someone adds.
+ */
+function fire<A extends unknown[]>(callback: (...args: A) => void, ...args: A): void {
+  closeOverlay()
+  callback(...args)
+}
+
 export function Overlays() {
   return (
     <Switch>
@@ -197,21 +205,23 @@ export function Overlays() {
             title={data().title}
             body={data().body}
             confirmLabel={data().confirmLabel}
-            onConfirm={() => {
-              closeOverlay()
-              data().onConfirm()
-            }}
+            onConfirm={() => fire(data().onConfirm)}
           />
         )}
       </Match>
       <Match when={pick("prompt")}>
         {(data: Accessor<OverlayOf<"prompt">>) => (
-          <PromptOverlay title={data().title} body={data().body} initial={data().initial} onSubmit={data().onSubmit} />
+          <PromptOverlay
+            title={data().title}
+            body={data().body}
+            initial={data().initial}
+            onSubmit={(value) => fire(data().onSubmit, value)}
+          />
         )}
       </Match>
       <Match when={pick("menu")}>
         {(data: Accessor<OverlayOf<"menu">>) => (
-          <MenuOverlay title={data().title} options={data().options} onPick={data().onPick} />
+          <MenuOverlay title={data().title} options={data().options} onPick={(value) => fire(data().onPick, value)} />
         )}
       </Match>
     </Switch>

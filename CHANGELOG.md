@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Prompt overlays now run their callback. `/` (filter), `t` (track) and `W` (set workspace) closed
+  their dialog and did nothing at all, as did any mouse click on a confirm button or a menu option.
+- The key that opens a prompt is no longer typed into it, so `/` filters for `needle` and not
+  `/needle`.
+- An emptied Track prompt no longer starts indexing the directory lazygortex was launched from, and a
+  path containing `..` is resolved before it is compared with what the daemon tracks.
+- The already-tracked check ignores the panel filter, instead of reporting a hidden repository as
+  untracked and re-indexing it.
+- An active filter is visible: the panel title carries the needle, the summary reads `N of M tracked`,
+  and an empty list says which needle excluded everything.
+
 ## [0.1.0] - 2026-08-18
 
 First public release.

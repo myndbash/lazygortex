@@ -150,8 +150,11 @@ export function panelBindings(): Binding[] {
           body: "Absolute path to the repository the daemon should index.",
           initial: process.cwd(),
           onSubmit: (value) => {
+            // an emptied prompt means "never mind" — it has to be caught before
+            // normalizePath, which resolves an empty string to the cwd and would
+            // start a full index of whatever directory lazygortex was launched from
+            if (!value.trim()) return
             const path = normalizePath(value)
-            if (!path) return
             // the CLI happily re-adds an already-tracked repo without a word,
             // so the check that makes the action meaningful lives here
             if (isTracked(path)) {

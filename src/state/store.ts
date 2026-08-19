@@ -6,6 +6,7 @@
  * bookkeeping. Polling is opt-in per slot and never overlaps itself.
  */
 
+import { resolve } from "node:path"
 import { createStore, produce } from "solid-js/store"
 import * as gortex from "../gortex/client.ts"
 import type { EnrichKind } from "../gortex/client.ts"
@@ -549,18 +550,29 @@ export async function command(label: string, action: () => Promise<CommandResult
   }
 }
 
+/**
+ * Whether the daemon tracks this path — a question about the daemon, not about
+ * the view, so it deliberately ignores the panel's filter.
+ */
 export function isTracked(path: string): boolean {
-  return repoRows().some((row) => row.path === path)
+  return repoRows({ filtered: false }).some((row) => row.path === path)
 }
 
-/** Expand `~`, resolve relatives, drop a trailing slash. */
+/**
+ * Expand `~`, then resolve: `..` segments, duplicate separators and a trailing
+ * slash all collapse, and a relative path is anchored to the cwd. The result is
+ * comparable with the canonical absolute paths the CLI reports, which is what
+ * isTracked's exact-match test needs.
+ *
+ * Empty input resolves to the cwd. Callers that treat an emptied prompt as
+ * "never mind" must test the raw value before calling this.
+ */
 export function normalizePath(input: string): string {
   const home = process.env["HOME"] ?? ""
   let path = input.trim()
   if (path === "~") path = home
   else if (path.startsWith("~/")) path = `${home}/${path.slice(2)}`
-  if (!path.startsWith("/")) path = `${process.cwd()}/${path}`
-  return path.length > 1 ? path.replace(/\/+$/, "") : path
+  return resolve(path)
 }
 
 export const actions = {

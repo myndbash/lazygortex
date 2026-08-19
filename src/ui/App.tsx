@@ -139,7 +139,12 @@ export function App() {
     }
     if (routeOverlayKey(key)) return
     if (state.message && Date.now() - state.message.at > 400) clearMessage()
-    handleKey(key)
+    // A binding that opens a prompt mounts a focused <input> inside this very
+    // dispatch, and opentui collects the renderable handlers *after* the global
+    // ones have run — so the key that opened the prompt would be typed into it
+    // (`/` filtering for `/needle`). preventDefault stops the second delivery;
+    // keys meant for an open prompt never reach here, they leave above.
+    if (handleKey(key)) key.preventDefault()
   })
 
   /** Probe the CLI first; every panel is meaningless without it. */

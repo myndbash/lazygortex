@@ -104,8 +104,14 @@ function summary(panel: PanelId): { text: string; fg: string } {
       const rows = repoRows()
       const stale = rows.filter((row) => row.freshness === "stale").length
       const newest = rows.reduce((latest, row) => (row.lastIndexed > latest ? row.lastIndexed : latest), "")
+      // with a filter on, `N tracked` would be a count of the view reported as a
+      // count of the daemon; say both numbers instead
+      const needle = state.filter.repos.trim()
+      const count = needle
+        ? `${rows.length} of ${repoRows({ filtered: false }).length} tracked`
+        : `${rows.length} tracked`
       return {
-        text: `${rows.length} tracked${stale ? ` ${glyph.bullet} ${stale} stale` : ""}`,
+        text: `${count}${stale ? ` ${glyph.bullet} ${stale} stale` : ""}`,
         fg: stale ? theme.warn : ageColor(newest),
       }
     }
@@ -156,6 +162,13 @@ function rowBackground(selected: boolean, active: boolean): string | undefined {
   return active ? theme.activeSelectionBg : theme.selectionBg
 }
 
+/** An empty list because a filter excluded everything reads very differently. */
+function emptyLabel(panel: PanelId): string {
+  const needle = state.filter[panel].trim()
+  if (needle) return `no match for /${needle}`
+  return state.status.loading ? "loading…" : "nothing here"
+}
+
 function PanelList(props: { panel: PanelId; capacity: number }) {
   const rows = () => panelRows(props.panel)
   const cursor = () => Math.min(state.cursor[props.panel], Math.max(0, rows().length - 1))
@@ -171,7 +184,7 @@ function PanelList(props: { panel: PanelId; capacity: number }) {
   return (
     <box style={{ flexDirection: "column", flexGrow: 1 }}>
       <Show when={rows().length === 0}>
-        <text fg={theme.dim}>{state.status.loading ? "loading…" : "nothing here"}</text>
+        <text fg={theme.dim}>{emptyLabel(props.panel)}</text>
       </Show>
       <For each={visible()}>
         {(row, index) => {
@@ -206,7 +219,12 @@ export function SidePanel(props: { capacity: number; compact: boolean }) {
         {(panel, index) => {
           const focused = () => state.panel === panel
           const info = () => summary(panel)
-          const title = `${index() + 1} ${PANEL_TITLES[panel]}`
+          // an accessor, not a constant: the filter suffix has to appear and
+          // disappear with state.filter
+          const title = () => {
+            const needle = state.filter[panel].trim()
+            return `${index() + 1} ${PANEL_TITLES[panel]}${needle ? ` /${needle}` : ""}`
+          }
 
           return (
             <Show
@@ -215,7 +233,7 @@ export function SidePanel(props: { capacity: number; compact: boolean }) {
                 <box style={{ height: BARE_HEIGHT, flexShrink: 0 }} onMouseDown={() => selectPanel(panel)}>
                   <Row
                     parts={[
-                      c(theme.muted, ` ${title.padEnd(15)}`),
+                      c(theme.muted, ` ${title().padEnd(15)}`),
                       c(info().fg, truncate(info().text, SIDE_WIDTH - 18)),
                     ]}
                   />
@@ -223,7 +241,7 @@ export function SidePanel(props: { capacity: number; compact: boolean }) {
               }
             >
               <box
-                title={` ${title} `}
+                title={` ${title()} `}
                 titleColor={focused() ? theme.borderFocus : theme.muted}
                 bottomTitle={focused() && panel === "repos" ? FRESHNESS_LEGEND : undefined}
                 bottomTitleAlignment="center"
