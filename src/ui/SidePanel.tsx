@@ -139,7 +139,7 @@ function summary(panel: PanelId): { text: string; fg: string } {
       const status = state.status.data
       if (state.status.error && !status) return { text: state.status.error, fg: theme.error }
       if (!status) return { text: "loading…", fg: theme.dim }
-      if (!status.running) return { text: "stopped", fg: theme.error }
+      if (!status.running) return { text: truncate(status.reason ?? "stopped", SIDE_WIDTH - 6), fg: theme.error }
       return {
         text: `${status.state ?? "running"} ${glyph.bullet} ${status.uptime ?? ""}`,
         fg: stateColor(status.state),

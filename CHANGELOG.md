@@ -59,6 +59,12 @@ All notable changes to this project are documented here. The format follows
 - `solid-js` and `@opentui/core` are pinned to the versions the bundled binding was compiled against, so
   the npm package and the release binaries cannot drift apart.
 
+- A command that hangs no longer locks the app out of every later action. The timeout bounds wall-clock
+  time rather than just signalling the child, and the process group is killed if SIGTERM is ignored.
+- Failures say what actually happened: a timeout reads as a timeout rather than `command failed`, a
+  binary without its execute bit as `not executable` rather than `not found`, and a status call that
+  could not run as an error rather than as `daemon stopped`.
+
 ### Added
 
 - `--check-renderer`, which loads the terminal renderer and exits non-zero if it cannot. `--version`

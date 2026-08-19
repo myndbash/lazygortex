@@ -50,6 +50,8 @@ export interface DaemonSession {
 export interface DaemonStatus {
   /** true when the daemon answered at all */
   running: boolean
+  /** what the CLI said when it is not running */
+  reason?: string
   version?: string
   pid?: string
   socket?: string
@@ -97,12 +99,23 @@ export interface IndexHealth {
   [key: string]: unknown
 }
 
+/**
+ * Why an invocation failed, when the reason is known.
+ *
+ * Without this every consumer invents an answer — `command failed` for a
+ * timeout, `not found` for a permissions error, `daemon stopped` for a status
+ * call that never ran — and tells the user something definite and wrong.
+ */
+export type FailureKind = "timedOut" | "notFound" | "notExecutable" | "spawnError"
+
 /** Result of one CLI invocation. */
 export interface CommandResult {
   ok: boolean
   code: number
   stdout: string
   stderr: string
+  /** set only when the reason is known; absent means the CLI itself failed */
+  failure?: FailureKind
   /** wall-clock duration in ms */
   ms: number
   argv: string[]
