@@ -12,17 +12,45 @@ const MESSAGE_COLOR = {
   error: theme.error,
 } as const
 
-/** Fit as many `key description` pairs as the bar can show. */
-function hintParts(bindings: Array<Pick<Binding, "label" | "description">>, width: number): Piece[] {
+type Hint = Pick<Binding, "label" | "description">
+
+/** The two keys a lost user needs, whatever else the bar has room for. */
+const ESSENTIAL = ["q", "?"]
+
+const hintWidth = (hint: Hint): number => hint.label.length + hint.description.length + 4
+
+function hintPieces(hint: Hint): Piece[] {
+  return [c(theme.accent, hint.label), c(theme.muted, ` ${hint.description}   `)]
+}
+
+/**
+ * Fit as many `key description` pairs as the bar can show.
+ *
+ * `q quit` and `? help` are reserved first: the Repos panel's own hints are
+ * longer than 80 columns on their own, and stopping at the first hint that did
+ * not fit dropped both of them at every realistic width. Anything skipped is
+ * admitted with a marker rather than silently left out.
+ */
+function hintParts(bindings: Hint[], width: number): Piece[] {
+  const essential = bindings.filter((hint) => ESSENTIAL.includes(hint.label))
+  const rest = bindings.filter((hint) => !ESSENTIAL.includes(hint.label))
+  const reserved = essential.reduce((total, hint) => total + hintWidth(hint), 0)
+
   const parts: Piece[] = []
   let used = 0
-  for (const binding of bindings) {
-    const label = binding.label
-    const description = ` ${binding.description}   `
-    if (used + label.length + description.length > width) break
-    parts.push(c(theme.accent, label), c(theme.muted, description))
-    used += label.length + description.length
+  let skipped = 0
+  for (const hint of rest) {
+    // skip past one that does not fit rather than stopping: a long description
+    // in the middle of the list used to hide everything after it
+    if (used + hintWidth(hint) > width - reserved - 2) {
+      skipped += 1
+      continue
+    }
+    parts.push(...hintPieces(hint))
+    used += hintWidth(hint)
   }
+  if (skipped > 0) parts.push(c(theme.dim, `${glyph.bullet}${glyph.bullet}  `))
+  for (const hint of essential) parts.push(...hintPieces(hint))
   return parts
 }
 
@@ -43,8 +71,10 @@ export function StatusBar(props: { width: number }) {
   return (
     <box style={{ flexDirection: "column", flexShrink: 0, backgroundColor: theme.bg }}>
       <box style={{ flexDirection: "row", height: 1, paddingLeft: 1, paddingRight: 1 }}>
+        {/* a message raised after the command started is about that command,
+            and is worth more than the spinner it used to be hidden behind */}
         <Show
-          when={state.busy}
+          when={state.busy && !(state.message && state.message.at >= state.busyAt)}
           fallback={
             <Show when={state.message} fallback={<text fg={theme.dim}>ready</text>}>
               {(message: Accessor<Message>) => (
@@ -55,9 +85,9 @@ export function StatusBar(props: { width: number }) {
             </Show>
           }
         >
-          {(busy: Accessor<string>) => (
+          {() => (
             <text fg={theme.warn}>
-              {`${glyph.spinner[frame()]} ${truncate(busy(), Math.max(10, props.width - 4))}`}
+              {`${glyph.spinner[frame()]} ${truncate(state.busy ?? "", Math.max(10, props.width - 4))}`}
             </text>
           )}
         </Show>

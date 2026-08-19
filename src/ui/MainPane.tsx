@@ -7,6 +7,7 @@ import { For, Show, createMemo, onMount, type Accessor } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
 import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core"
 import {
+  cursorIndex,
   currentProject,
   currentRepo,
   currentWorkspace,
@@ -321,7 +322,7 @@ function tracked(cwd: string): boolean {
 function SessionsDetail() {
   const paneWidth = usePaneWidth()
   const sessions = () => state.status.data?.mcpSessions ?? []
-  const session = () => sessions()[Math.min(state.cursor.sessions, Math.max(0, sessions().length - 1))]
+  const session = () => sessions()[cursorIndex("sessions")]
 
   return (
     <Show when={session()} fallback={<text fg={theme.dim}>no MCP client connected</text>}>

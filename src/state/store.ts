@@ -86,6 +86,8 @@ export interface State {
   focus: "side" | "main"
   cursor: Record<PanelId, number>
   filter: Record<PanelId, string>
+  /** the identity of the selected row, where the list has one */
+  anchor: Record<PanelId, string | null>
   status: Async<DaemonStatus>
   repos: Async<Repo[]>
   savings: Async<Savings>
@@ -97,6 +99,8 @@ export interface State {
   declarations: Async<WorkspaceDeclaration[]>
   /** label of the command currently running, if any */
   busy: string | null
+  /** when the running command started, so a newer message can render over it */
+  busyAt: number
   message: Message | null
   overlay: Overlay | null
   logTail: number
@@ -111,6 +115,10 @@ function noFilters(): Record<PanelId, string> {
   return Object.fromEntries(PANELS.map((panel) => [panel, ""])) as Record<PanelId, string>
 }
 
+function noAnchors(): Record<PanelId, string | null> {
+  return Object.fromEntries(PANELS.map((panel) => [panel, null])) as Record<PanelId, string | null>
+}
+
 function initialState(): State {
   return {
     binary: { ok: null, path: gortex.GORTEX_BIN },
@@ -118,6 +126,7 @@ function initialState(): State {
     focus: "side",
     cursor: zeroCursors(),
     filter: noFilters(),
+    anchor: noAnchors(),
     status: empty<DaemonStatus>(),
     repos: empty<Repo[]>(),
     savings: empty<Savings>(),
@@ -126,6 +135,7 @@ function initialState(): State {
     index: empty<IndexHealth>(),
     declarations: empty<WorkspaceDeclaration[]>(),
     busy: null,
+    busyAt: 0,
     message: null,
     overlay: null,
     logTail: 300,
@@ -146,11 +156,28 @@ export function resetState(): void {
 // message helpers
 // ---------------------------------------------------------------------------
 
-export function notify(kind: MessageKind, text: string): void {
-  setState("message", { kind, text, at: Date.now() })
+/** How long a message stays on the bar without another keypress to clear it. */
+export const MESSAGE_TTL = 6_000
+
+let messageTimer: ReturnType<typeof setTimeout> | null = null
+
+export function notify(kind: MessageKind, text: string, ttl: number = MESSAGE_TTL): void {
+  const at = Date.now()
+  setState("message", { kind, text, at })
+  // an expiry of its own: the old message was cleared by the next keypress,
+  // so an answer to a key that produced no further keys stayed on screen
+  if (messageTimer) clearTimeout(messageTimer)
+  messageTimer = setTimeout(() => {
+    // only the message this timer was made for: a newer one owns the bar
+    if (state.message?.at === at) clearMessage()
+  }, ttl)
 }
 
 export function clearMessage(): void {
+  if (messageTimer) {
+    clearTimeout(messageTimer)
+    messageTimer = null
+  }
   setState("message", null)
 }
 
@@ -428,7 +455,7 @@ export function repoRows(options: { filtered?: boolean } = {}): RepoRow[] {
 export function currentRepo(): RepoRow | null {
   const rows = repoRows()
   if (rows.length === 0) return null
-  return rows[Math.min(state.cursor.repos, rows.length - 1)] ?? null
+  return rows[cursorIndex("repos")] ?? null
 }
 
 /** The per-repo slice of the index-wide graph summary. */
@@ -556,15 +583,46 @@ export function cyclePanel(delta: number): void {
   selectPanel(PANELS[(index + delta + PANELS.length) % PANELS.length]!)
 }
 
+/**
+ * The identity of the selected row, for the two lists a poll re-orders: repos
+ * are sorted by a live node count and sessions arrive in the daemon's own
+ * order. An index alone meant the highlight — and the detail pane — changed
+ * record every three seconds with no keypress.
+ */
+function anchorOf(panel: PanelId, index: number): string | null {
+  if (panel === "repos") return repoRows()[index]?.path ?? null
+  if (panel === "sessions") return state.status.data?.mcpSessions[index]?.id ?? null
+  return null
+}
+
+function anchorIndex(panel: PanelId): number {
+  const anchor = state.anchor[panel]
+  if (!anchor) return -1
+  if (panel === "repos") return repoRows().findIndex((row) => row.path === anchor)
+  if (panel === "sessions") return (state.status.data?.mcpSessions ?? []).findIndex((row) => row.id === anchor)
+  return -1
+}
+
+/** Where the selection actually is: by identity when we have one, else clamped. */
+export function cursorIndex(panel: PanelId): number {
+  const length = listLength(panel)
+  if (length === 0) return 0
+  const found = anchorIndex(panel)
+  if (found >= 0) return found
+  return Math.min(state.cursor[panel], length - 1)
+}
+
 export function setCursor(panel: PanelId, index: number): void {
   const length = listLength(panel)
   if (length === 0) return
-  setState("cursor", panel, Math.max(0, Math.min(length - 1, index)))
+  const clamped = Math.max(0, Math.min(length - 1, index))
+  setState("cursor", panel, clamped)
+  setState("anchor", panel, anchorOf(panel, clamped))
   remember()
 }
 
 export function moveCursor(delta: number): void {
-  setCursor(state.panel, state.cursor[state.panel] + delta)
+  setCursor(state.panel, cursorIndex(state.panel) + delta)
 }
 
 export function jumpCursor(position: "top" | "bottom"): void {
@@ -598,7 +656,10 @@ async function applyPersisted(saved: Awaited<ReturnType<typeof loadPersisted>>):
 
   if (saved.repo) {
     const index = repoRows().findIndex((row) => row.path === saved.repo)
-    if (index >= 0) setState("cursor", "repos", index)
+    if (index >= 0) {
+      setState("cursor", "repos", index)
+      setState("anchor", "repos", saved.repo)
+    }
   }
 
   // through selectPanel, so the restored panel loads whatever it needs
@@ -618,6 +679,7 @@ export async function command(label: string, action: () => Promise<CommandResult
     return
   }
   setState("busy", label)
+  setState("busyAt", Date.now())
   notify("info", `${label}…`)
   try {
     const result = await action()

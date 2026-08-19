@@ -13,8 +13,9 @@ import type { TestRendererSetup } from "@opentui/core/testing"
 import { Header, visiblePanels } from "../src/ui/App.tsx"
 import { Overlays } from "../src/ui/Overlays.tsx"
 import { SidePanel } from "../src/ui/SidePanel.tsx"
+import { StatusBar } from "../src/ui/StatusBar.tsx"
 import { Table, type Column, type TableRow } from "../src/ui/Table.tsx"
-import { closeOverlay, openOverlay, PANELS, resetState, setState } from "../src/state/store.ts"
+import { clearMessage, closeOverlay, notify, openOverlay, PANELS, resetState, setState } from "../src/state/store.ts"
 import type { Repo } from "../src/gortex/types.ts"
 
 process.env["LAZYGORTEX_STATE_FILE"] = "off"
@@ -255,5 +256,51 @@ describe("visiblePanels", () => {
   test("never shows nothing", () => {
     expect(visiblePanels(1, true, "repos").panels.length).toBeGreaterThan(0)
     expect(visiblePanels(0, true, "daemon").panels).toContain("daemon")
+  })
+})
+
+describe("the status bar", () => {
+  test("keeps q and ? at every realistic width", async () => {
+    setState("binary", { ok: true, path: "/usr/bin/gortex" })
+    setState("panel", "repos")
+
+    for (const width of [80, 100, 120]) {
+      const frame = await render(() => <StatusBar width={width} />, width, 3)
+      // the Repos hints are longer than 80 columns on their own, and stopping at
+      // the first that did not fit dropped both of these
+      expect(frame).toContain("q quit")
+      expect(frame).toContain("? help")
+      setup?.renderer.destroy()
+      setup = undefined
+    }
+  })
+
+  test("says when it had to leave hints out", async () => {
+    setState("binary", { ok: true, path: "/usr/bin/gortex" })
+    setState("panel", "repos")
+    const frame = await render(() => <StatusBar width={60} />, 60, 3)
+
+    expect(frame).toContain("··")
+    expect(frame).toContain("q quit")
+  })
+
+  test("shows a message raised while a command runs, over the spinner", async () => {
+    setState("busy", "track /home/u/alpha")
+    setState("busyAt", Date.now() - 100)
+    notify("error", "already tracked: /home/u/alpha")
+
+    const frame = await render(() => <StatusBar width={80} />, 80, 3)
+    expect(frame).toContain("already tracked")
+
+    clearMessage()
+  })
+
+  test("shows the running command when nothing newer has been said", async () => {
+    clearMessage()
+    setState("busy", "re-index /home/u/alpha")
+    setState("busyAt", Date.now())
+
+    const frame = await render(() => <StatusBar width={80} />, 80, 3)
+    expect(frame).toContain("re-index /home/u/alpha")
   })
 })

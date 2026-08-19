@@ -7,6 +7,7 @@
 
 import { For, Show } from "solid-js"
 import {
+  cursorIndex,
   PANELS,
   projectRows,
   PANEL_TITLES,
@@ -174,7 +175,7 @@ function emptyLabel(panel: PanelId): string {
 
 function PanelList(props: { panel: PanelId; capacity: number }) {
   const rows = () => panelRows(props.panel)
-  const cursor = () => Math.min(state.cursor[props.panel], Math.max(0, rows().length - 1))
+  const cursor = () => cursorIndex(props.panel)
   // keep the cursor inside the window without tracking scroll state separately
   const start = () => {
     const capacity = Math.max(1, props.capacity)

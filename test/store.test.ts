@@ -5,7 +5,20 @@
 
 import { beforeEach, describe, expect, test } from "bun:test"
 import { resolve } from "node:path"
-import { isTracked, normalizePath, projectRows, repoRows, resetState, setState } from "../src/state/store.ts"
+import {
+  clearMessage,
+  currentRepo,
+  cursorIndex,
+  isTracked,
+  normalizePath,
+  notify,
+  projectRows,
+  repoRows,
+  resetState,
+  setCursor,
+  setState,
+  state,
+} from "../src/state/store.ts"
 import type { DaemonRepo, Repo, WorkspaceDeclaration } from "../src/gortex/types.ts"
 
 process.env["LAZYGORTEX_STATE_FILE"] = "off"
@@ -323,5 +336,69 @@ describe("repoRows merges each repository once", () => {
         .map((row) => row.name)
         .sort(),
     ).toEqual(["ledger", "parser"])
+  })
+})
+
+describe("selection survives a re-sort", () => {
+  function seed(nodes: Record<string, number>): void {
+    setState("repos", "data", [repo("alpha", "/home/u/alpha"), repo("beta", "/home/u/beta")])
+    setState("status", "data", {
+      running: true,
+      fields: [],
+      workspaces: [],
+      mcpSessions: [],
+      repos: Object.entries(nodes).map(([name, count]) => ({
+        repo: name,
+        path: `/home/u/${name}`,
+        workspace: `ws/${name}`,
+        total: "1.0 MiB",
+        files: 10,
+        nodes: count,
+        edges: count * 2,
+      })),
+    })
+  }
+
+  test("the selected repo stays selected when the poll reorders the list", () => {
+    seed({ alpha: 100, beta: 50 })
+    setCursor("repos", 1)
+    expect(currentRepo()?.name).toBe("beta")
+
+    // three seconds later the node counts have moved and the sort flips
+    seed({ alpha: 10, beta: 500 })
+    expect(repoRows()[0]?.name).toBe("beta")
+    // an index alone would now be pointing at alpha
+    expect(currentRepo()?.name).toBe("beta")
+    expect(cursorIndex("repos")).toBe(0)
+  })
+
+  test("a selection whose row disappears falls back to a clamped index", () => {
+    seed({ alpha: 100, beta: 50 })
+    setCursor("repos", 1)
+
+    setState("repos", "data", [repo("alpha", "/home/u/alpha")])
+    setState("status", "data", { running: true, fields: [], workspaces: [], mcpSessions: [], repos: [] })
+    expect(currentRepo()?.name).toBe("alpha")
+  })
+})
+
+describe("messages", () => {
+  test("expire on their own, without needing another keypress", async () => {
+    notify("error", "already tracked", 40)
+    expect(state.message?.text).toBe("already tracked")
+
+    await Bun.sleep(120)
+    // the old message was cleared by the next keypress, so an answer to a key
+    // that produced no further keys stayed on the bar for the rest of the session
+    expect(state.message).toBeNull()
+  })
+
+  test("a newer message is not taken down by the older one's timer", async () => {
+    notify("info", "first", 40)
+    notify("info", "second", 400)
+
+    await Bun.sleep(120)
+    expect(state.message?.text).toBe("second")
+    clearMessage()
   })
 })
