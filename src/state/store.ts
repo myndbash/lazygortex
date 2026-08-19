@@ -582,8 +582,19 @@ export async function restoreView(): Promise<void> {
   }
 }
 
+/** The bounds the `+`/`-` keys work within, applied to anything read from disk. */
+export const LOG_TAIL_MIN = 50
+export const LOG_TAIL_MAX = 5_000
+
+export function clampLogTail(value: number): number {
+  if (!Number.isFinite(value)) return 300
+  return Math.max(LOG_TAIL_MIN, Math.min(LOG_TAIL_MAX, Math.trunc(value)))
+}
+
 async function applyPersisted(saved: Awaited<ReturnType<typeof loadPersisted>>): Promise<void> {
-  if (saved.logTail && Number.isFinite(saved.logTail)) setState("logTail", saved.logTail)
+  // a hand-edited state file is input like any other: `gortex daemon logs -n -5`
+  // makes the CLI panic
+  if (saved.logTail !== undefined) setState("logTail", clampLogTail(saved.logTail))
 
   if (saved.repo) {
     const index = repoRows().findIndex((row) => row.path === saved.repo)

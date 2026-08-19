@@ -9,11 +9,22 @@
 
 const HOME = process.env["HOME"] ?? "."
 
-/** `LAZYGORTEX_STATE_FILE` overrides the location; `=off` disables persistence. */
+/**
+ * `LAZYGORTEX_STATE_FILE` overrides the location; `off` disables persistence.
+ *
+ * The comparison is case- and whitespace-insensitive, and `0`, `none` and the
+ * empty string mean the same thing: `LAZYGORTEX_STATE_FILE=OFF` used to be read
+ * as a filename and wrote a file called `OFF` into the working directory. A
+ * relative override is resolved against $HOME rather than wherever the app
+ * happened to be launched from.
+ */
 function stateFile(): string | null {
-  const override = process.env["LAZYGORTEX_STATE_FILE"]
-  if (override === "off") return null
-  if (override) return override
+  const raw = process.env["LAZYGORTEX_STATE_FILE"]
+  if (raw !== undefined) {
+    const override = raw.trim()
+    if (["off", "0", "none", ""].includes(override.toLowerCase())) return null
+    return override.startsWith("/") ? override : `${HOME}/${override}`
+  }
   const dir = `${process.env["XDG_STATE_HOME"] ?? `${HOME}/.local/state`}/lazygortex`
   return `${dir}/state.json`
 }

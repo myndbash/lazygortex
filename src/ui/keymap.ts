@@ -6,6 +6,7 @@
 import type { KeyEvent } from "@opentui/core"
 import {
   actions,
+  clampLogTail,
   currentProject,
   currentRepo,
   currentWorkspace,
@@ -375,7 +376,7 @@ export function panelBindings(): Binding[] {
       description: "tail more lines",
       hint: true,
       run: () => {
-        setState("logTail", Math.min(5_000, state.logTail * 2))
+        setState("logTail", clampLogTail(state.logTail * 2))
         void refresh.logs()
       },
     },
@@ -386,7 +387,7 @@ export function panelBindings(): Binding[] {
       description: "tail fewer lines",
       hint: true,
       run: () => {
-        setState("logTail", Math.max(50, Math.floor(state.logTail / 2)))
+        setState("logTail", clampLogTail(state.logTail / 2))
         void refresh.logs()
       },
     },

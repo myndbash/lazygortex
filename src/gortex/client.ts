@@ -7,6 +7,8 @@
  * degraded state instead of crashing the renderer.
  */
 
+import { existsSync } from "node:fs"
+import { resolve } from "node:path"
 import { parseDaemonStatus, parseSavings, parseWorkspaceList, errorMessage } from "./parse.ts"
 import type {
   CommandResult,
@@ -21,14 +23,19 @@ import type {
 
 const HOME = process.env["HOME"] ?? ""
 
-/** Resolve the gortex binary: $GORTEX_BIN, then PATH, then ~/.local/bin. */
+/**
+ * Resolve the gortex binary: $GORTEX_BIN, then PATH, then ~/.local/bin.
+ *
+ * Always absolute. `enrich` is the one call that overrides the spawn cwd, and a
+ * relative binary path resolved against that cwd fails as though gortex itself
+ * were missing.
+ */
 function resolveBin(): string {
   const explicit = process.env["GORTEX_BIN"]
-  if (explicit) return explicit
+  if (explicit) return explicit.startsWith("/") ? explicit : resolve(explicit)
   const fromPath = Bun.which("gortex")
   if (fromPath) return fromPath
-  const local = `${HOME}/.local/bin/gortex`
-  return local
+  return `${HOME}/.local/bin/gortex`
 }
 
 export const GORTEX_BIN = resolveBin()
@@ -336,6 +343,19 @@ export function init(repoPath: string, dryRun = false): Promise<CommandResult> {
 export const ENRICH_KINDS = ["churn", "blame", "coverage", "releases", "cochange"] as const
 export type EnrichKind = (typeof ENRICH_KINDS)[number]
 
-export function enrich(kind: EnrichKind, repoPath: string): Promise<CommandResult> {
+export async function enrich(kind: EnrichKind, repoPath: string): Promise<CommandResult> {
+  // the only call with a cwd override, and a missing cwd makes the spawn fail
+  // with the same shape as a missing binary — so check first and say which
+  if (!existsSync(repoPath)) {
+    return {
+      ok: false,
+      code: -1,
+      stdout: "",
+      stderr: `no such directory: ${repoPath}`,
+      failure: "spawnError",
+      ms: 0,
+      argv: [GORTEX_BIN, "enrich", kind],
+    }
+  }
   return run(["enrich", kind], { cwd: repoPath, timeoutMs: 300_000 })
 }

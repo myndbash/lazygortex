@@ -29,7 +29,20 @@ const entrypoint = join(root, "src/index.tsx")
 
 const args = process.argv.slice(2)
 const bundleOnly = args.includes("--bundle")
-const outfile = args.includes("--outfile") ? args[args.indexOf("--outfile") + 1] : undefined
+
+/** `--outfile` with nothing after it used to build under the default name. */
+function outfileArg(): string | undefined {
+  const index = args.indexOf("--outfile")
+  if (index === -1) return undefined
+  const value = args[index + 1]
+  if (!value || value.startsWith("-")) {
+    console.error("build: --outfile needs a path")
+    process.exit(2)
+  }
+  return value
+}
+
+const outfile = outfileArg()
 
 function fail(result: { logs: unknown[] }): never {
   for (const log of result.logs) console.error(log)

@@ -9,6 +9,8 @@ import { GORTEX_BIN } from "./gortex/client.ts"
 // imported rather than read at runtime so it survives `bun build --compile`
 import { version } from "../package.json"
 
+const KNOWN_FLAGS = ["--help", "-h", "--version", "-v", "--check-renderer"]
+
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`lazygortex — terminal UI for the Gortex daemon
 
@@ -52,6 +54,15 @@ if (process.argv.includes("--check-renderer")) {
     console.error(`renderer unavailable: ${error instanceof Error ? error.message : String(error)}`)
     process.exit(1)
   }
+}
+
+// A typo'd flag used to start the TUI, so a scripted `lazygortex --verison`
+// hung on a full-screen renderer instead of failing.
+const unknown = process.argv.slice(2).find((arg) => arg.startsWith("-") && !KNOWN_FLAGS.includes(arg))
+if (unknown) {
+  console.error(`lazygortex: unknown option: ${unknown}`)
+  console.error(`usage: lazygortex [--help] [--version] [--check-renderer]`)
+  process.exit(2)
 }
 
 render(App, {
