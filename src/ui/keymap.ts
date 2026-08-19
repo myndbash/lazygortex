@@ -58,6 +58,24 @@ const quit = (): void => {
 }
 
 /**
+ * Copy and report, in one place. Two of the three yank bindings dropped their
+ * errors entirely, and all three called the unacknowledgeable OSC 52 fallback a
+ * success.
+ */
+function yank(text: string): void {
+  void copyToClipboard(text).then(
+    (result) => {
+      if (result.kind === "copied") return notify("success", `copied ${text} (${result.detail})`)
+      if (result.kind === "sent") {
+        return notify("info", `sent ${text} to the terminal via OSC 52 — it may be ignored`)
+      }
+      notify("error", `copy failed: ${result.detail}`)
+    },
+    (error: unknown) => notify("error", `copy failed: ${error instanceof Error ? error.message : String(error)}`),
+  )
+}
+
+/**
  * A scroll delta no content can survive, which is how `g`/`G` reach the ends:
  * the scroll hook takes a delta, and the scrollbox clamps it to its own range.
  */
@@ -286,10 +304,7 @@ export function panelBindings(): Binding[] {
       run: () => {
         const repo = currentRepo()
         if (!repo) return notify("error", "no repository selected")
-        void copyToClipboard(repo.path).then(
-          (via) => notify("success", `copied ${repo.path} (${via})`),
-          (error: unknown) => notify("error", `copy failed: ${error instanceof Error ? error.message : error}`),
-        )
+        yank(repo.path)
       },
     },
 
@@ -303,7 +318,7 @@ export function panelBindings(): Binding[] {
       run: () => {
         const project = currentProject()
         if (!project) return notify("error", "no project selected")
-        void copyToClipboard(project.key).then((via) => notify("success", `copied ${project.key} (${via})`))
+        yank(project.key)
       },
     },
 
@@ -316,7 +331,7 @@ export function panelBindings(): Binding[] {
       run: () => {
         const workspace = currentWorkspace()
         if (!workspace) return notify("error", "no workspace selected")
-        void copyToClipboard(workspace).then((via) => notify("success", `copied ${workspace} (${via})`))
+        yank(workspace)
       },
     },
 

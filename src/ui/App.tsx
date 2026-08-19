@@ -182,6 +182,9 @@ export function visiblePanels(
   return { panels: all.slice(start, start + keep), hidden: all.length - keep }
 }
 
+/** The in-flight start(), so a second one waits rather than racing the first. */
+let starting: Promise<void> | null = null
+
 export function App() {
   const renderer = useRenderer()
   const dimensions = useTerminalDimensions()
@@ -214,13 +217,28 @@ export function App() {
     if (handleKey(key)) key.preventDefault()
   })
 
-  /** Probe the CLI first; every panel is meaningless without it. */
+  /**
+   * Probe the CLI first; every panel is meaningless without it.
+   *
+   * One at a time: `r` on the Setup screen could run this concurrently, and a
+   * restoreView() from an earlier run landing later would undo whatever the
+   * user had navigated to in the meantime.
+   */
   async function start(): Promise<void> {
-    if (!(await checkBinary())) return
-    // the saved panel/selection can only be restored once the lists exist
-    await refresh.fast()
-    await restoreView()
-    await refresh.all()
+    if (starting) return starting
+    setState("binary", "ok", null)
+    starting = (async () => {
+      try {
+        if (!(await checkBinary())) return
+        // the saved panel/selection can only be restored once the lists exist
+        await refresh.fast()
+        await restoreView()
+        await refresh.all()
+      } finally {
+        starting = null
+      }
+    })()
+    return starting
   }
 
   onMount(() => {

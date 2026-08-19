@@ -60,9 +60,43 @@ export function relativeTime(iso: string): string {
   return `${Math.round(seconds / 86_400)}d ago`
 }
 
+/**
+ * How many terminal columns a string occupies.
+ *
+ * `String#length` counts UTF-16 code units while opentui lays out in columns, so
+ * a CJK name pushed a table's rules right of the rule above it and an emoji did
+ * the same by one column.
+ */
+export function displayWidth(value: string): number {
+  return Bun.stringWidth(value)
+}
+
+/** Pad to a column width, counting columns rather than code units. */
+export function padTo(value: string, width: number, align: "left" | "right" = "left"): string {
+  const gap = Math.max(0, width - displayWidth(value))
+  return align === "right" ? " ".repeat(gap) + value : value + " ".repeat(gap)
+}
+
+/**
+ * Cut to `width` columns, on a grapheme boundary.
+ *
+ * Slicing by code unit could cut a surrogate pair in half and emit a lone
+ * surrogate into the frame buffer.
+ */
 export function truncate(value: string, width: number): string {
   if (width <= 1) return ""
-  return value.length <= width ? value : `${value.slice(0, width - 1)}…`
+  if (displayWidth(value) <= width) return value
+
+  const graphemes = [...new Intl.Segmenter().segment(value)].map((entry) => entry.segment)
+  let out = ""
+  let used = 0
+  for (const grapheme of graphemes) {
+    const cost = displayWidth(grapheme)
+    if (used + cost > width - 1) break
+    out += grapheme
+    used += cost
+  }
+  return `${out}…`
 }
 
 /** Collapse $HOME to `~` the way the shell prompt does. */

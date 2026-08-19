@@ -8,7 +8,7 @@
 
 import { createMemo, For, Show } from "solid-js"
 import { c, Row, type Piece } from "./Row.tsx"
-import { theme, truncate } from "./theme.ts"
+import { displayWidth, padTo, theme, truncate } from "./theme.ts"
 
 export interface Cell {
   text: string
@@ -29,8 +29,7 @@ function cell(value: Cell | string): Cell {
 }
 
 function pad(text: string, width: number, align: "left" | "right" | undefined): string {
-  const clipped = truncate(text, width)
-  return align === "right" ? clipped.padStart(width) : clipped.padEnd(width)
+  return padTo(truncate(text, width), width, align === "right" ? "right" : "left")
 }
 
 /** No column is worth drawing narrower than this. */
@@ -47,7 +46,10 @@ const MIN_WIDTH = 2
  */
 function layout(columns: Column[], rows: TableRow[], available: number): number[] {
   const widths = columns.map((column, index) => {
-    const longest = rows.reduce((max, row) => Math.max(max, cell(row[index] ?? "").text.length), column.header.length)
+    const longest = rows.reduce(
+      (max, row) => Math.max(max, displayWidth(cell(row[index] ?? "").text)),
+      displayWidth(column.header),
+    )
     return Math.max(3, Math.min(longest, column.max ?? Infinity))
   })
 

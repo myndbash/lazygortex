@@ -103,6 +103,18 @@ describe("overlays at a small terminal", () => {
     expect(frame).not.toContain("Repostrack")
   })
 
+  test("the help overlay lists every key that runs a binding, not just its label", async () => {
+    openOverlay({ kind: "help" })
+    const frame = await render(() => <Overlays />, 110, 40)
+
+    // the status bar needs `q` and `tab`; the help promised the full list
+    expect(frame).toContain("q ctrl+c")
+    expect(frame).toContain("tab ]")
+    expect(frame).toContain("pagedown ctrl+d")
+    // and the digit line counts the panels there are
+    expect(frame).toContain(`1…${PANELS.length}`)
+  })
+
   test("the help overlay stays inside a 70-column terminal, left border included", async () => {
     openOverlay({ kind: "help" })
     const frame = await render(() => <Overlays />, 70, 30)

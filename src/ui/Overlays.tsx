@@ -5,11 +5,11 @@
 
 import { For, Match, Show, Switch, createMemo, createSignal, type Accessor } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
-import { closeOverlay, PANEL_TITLES, state, type Overlay } from "../state/store.ts"
+import { closeOverlay, PANELS, PANEL_TITLES, state, type Overlay } from "../state/store.ts"
 import { globalBindings, panelBindings, type Binding } from "./keymap.ts"
 import { FRESHNESS } from "./SidePanel.tsx"
 import { c, Row, type Piece } from "./Row.tsx"
-import { glyph, theme, truncate } from "./theme.ts"
+import { glyph, padTo, theme, truncate } from "./theme.ts"
 
 /**
  * Modals are absolutely positioned inside the app root rather than portalled
@@ -69,8 +69,13 @@ const HELP_WIDTH = 78
 /** Frame chrome the content does not get: two borders, two paddings, a footer. */
 const HELP_CHROME = 5
 
+/** Every key that runs a binding, not the abbreviation the status bar needs. */
+function keysOf(binding: Binding): string {
+  return binding.keys.join(" ")
+}
+
 function keyRow(binding: Binding, room: number): Piece[] {
-  return [c(theme.info, binding.label.padEnd(8)), c(theme.text, truncate(binding.description, room))]
+  return [c(theme.info, padTo(truncate(keysOf(binding), 15), 16)), c(theme.text, truncate(binding.description, room))]
 }
 
 /**
@@ -96,7 +101,7 @@ function HelpOverlay() {
     const out: Piece[][] = [[c(theme.accent, `── ${PANEL_TITLES[state.panel]} panel `)]]
 
     if (scoped.length === 0) out.push([c(theme.dim, "no panel-specific keys")])
-    else for (const binding of scoped) out.push(keyRow(binding, room() - 8))
+    else for (const binding of scoped) out.push(keyRow(binding, room() - 16))
 
     out.push([], [c(theme.accent, "── global ")])
     if (columns() === 2) {
@@ -106,15 +111,15 @@ function HelpOverlay() {
         const left = global[index]!
         const right = global[index + half]
         out.push([
-          c(theme.info, left.label.padEnd(8)),
-          c(theme.text, truncate(left.description, column - 8).padEnd(column - 4)),
-          ...(right ? keyRow(right, column - 8) : []),
+          c(theme.info, padTo(truncate(keysOf(left), 15), 16)),
+          c(theme.text, padTo(truncate(left.description, column - 16), column - 12)),
+          ...(right ? keyRow(right, column - 16) : []),
         ])
       }
     } else {
-      for (const binding of global) out.push(keyRow(binding, room() - 8))
+      for (const binding of global) out.push(keyRow(binding, room() - 16))
     }
-    out.push([c(theme.info, "1…7".padEnd(8)), c(theme.text, "jump straight to a panel")])
+    out.push([c(theme.info, padTo(`1…${PANELS.length}`, 16)), c(theme.text, "jump straight to a panel")])
 
     // generated from the same table the marks are drawn from, so a mark can
     // never appear on screen without a line here explaining it

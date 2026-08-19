@@ -20,7 +20,7 @@ import {
 } from "../state/store.ts"
 import { c, Row, type Piece } from "./Row.tsx"
 import { ageColor, magnitudeColor, shareColor, stateColor, uptimeColor } from "./semantics.ts"
-import { glyph, humanCount, theme, truncate } from "./theme.ts"
+import { displayWidth, glyph, humanCount, theme, truncate } from "./theme.ts"
 
 export const SIDE_WIDTH = 38
 const BOXED_HEIGHT = 3
@@ -153,8 +153,9 @@ function summary(panel: PanelId): { text: string; fg: string } {
 
 function rowParts(row: PanelRow, width: number, selected: boolean): Piece[] {
   const meta = row.meta ?? ""
-  const label = truncate(row.text, Math.max(4, width - meta.length - 1))
-  const pad = " ".repeat(Math.max(1, width - label.length - meta.length))
+  // columns, not code units: a CJK repo name is twice as wide as its length
+  const label = truncate(row.text, Math.max(4, width - displayWidth(meta) - 1))
+  const pad = " ".repeat(Math.max(1, width - displayWidth(label) - displayWidth(meta)))
   const fg = selected ? theme.selectionFg : (row.fg ?? theme.text)
   const metaFg = selected ? theme.selectionFg : (row.metaFg ?? theme.dim)
   return [c(fg, label), c(theme.dim, pad), c(metaFg, meta)]
