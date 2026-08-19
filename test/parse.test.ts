@@ -51,18 +51,53 @@ describe("parseDaemonStatus", () => {
 })
 
 describe("parseSavings", () => {
-  const savings = parseSavings(`Gortex Token Savings
+  // a live capture: the header the old fixture assumed was three lines long is
+  // six today, which is what made the detail pane draw the bars twice
+  const DASHBOARD = `Gortex Token Savings
 ====================
+Store:          /home/u/.local/share/gortex/sidecar.sqlite
+Tracking since: 2026-08-17 08:35
+Last updated:   2026-08-19 08:29
 
-Today       █████░░░░░░░░░░░   28.5%  saved 5,158 / 18,130 tokens  $0.0258
-Last 7 days ███████░░░░░░░░░   43.7%  saved 492,816 / 1,127,914 tokens  $2.46
-All time    ███████░░░░░░░░░   43.7%  saved 492,816 / 1,127,914 tokens  $2.46
-`)
+
+Today       ██░░░░░░░░░░░░░░   13.4%  saved 41,393 / 309,685 tokens  $0.2070
+Last 7 days █████░░░░░░░░░░░   33.80%  saved 583,447 / 1,728,515 tokens  $2.92
+All time    █████░░░░░░░░░░░   33.80%  saved 583,447 / 1,728,515 tokens  $2.92
+
+Cost avoided per model (all time):
+  claude-opus-5 $3.94   (471 calls · 787,653 tokens saved)
+`
+  const savings = parseSavings(DASHBOARD)
 
   test("reads all three buckets", () => {
     expect(savings.buckets).toHaveLength(3)
-    expect(savings.buckets[0]).toEqual({ label: "Today", percent: 28.5, saved: 5158, total: 18130, usd: 0.0258 })
-    expect(savings.buckets[2]?.saved).toBe(492816)
+    expect(savings.buckets[0]).toEqual({
+      label: "Today",
+      percent: 13.4,
+      percentText: "13.4",
+      saved: 41393,
+      total: 309685,
+      usd: 0.207,
+      usdText: "0.2070",
+    })
+    expect(savings.buckets[2]?.saved).toBe(583447)
+  })
+
+  test("keeps the figures as printed, because a cost is not a quantity to reformat", () => {
+    // Number("0.2070") renders back as 0.207, and Number("33.80") as 33.8
+    expect(savings.buckets[0]?.usdText).toBe("0.2070")
+    expect(savings.buckets[1]?.percentText).toBe("33.80")
+  })
+
+  test("the tail is what the dashboard says after the bars", () => {
+    expect(savings.tail).toContain("Cost avoided per model")
+    // and never the bars themselves, which is what counting header lines gave
+    expect(savings.tail).not.toContain("Last 7 days")
+    expect(savings.tail).not.toContain("All time")
+  })
+
+  test("a dashboard with no bars has no tail to show", () => {
+    expect(parseSavings("Gortex Token Savings\n====================\n").tail).toBe("")
   })
 })
 

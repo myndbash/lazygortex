@@ -200,16 +200,28 @@ export function parseSavings(raw: string): Savings {
   const buckets: SavingsBucket[] = []
   const re =
     /^(Today|Last 7 days|All time)\s+[█░▓▒\s]*\s+([\d.]+)%\s+saved\s+([\d,]+)\s*\/\s*([\d,]+)\s*tokens\s*\$?([\d.]+)?/gm
+  let lastBucketEnd = 0
   for (const m of text.matchAll(re)) {
+    // the printed figures are kept as well as the numbers: `Number("2.92")`
+    // rendered back is `2.92`, but `Number("0.2070")` is `0.207`, and a cost is
+    // not a quantity to re-format
     buckets.push({
       label: m[1]!,
       percent: Number(m[2]),
+      percentText: m[2]!,
       saved: num(m[3]),
       total: num(m[4]),
       usd: m[5] ? Number(m[5]) : 0,
+      usdText: m[5] ?? "0",
     })
+    lastBucketEnd = (m.index ?? 0) + m[0].length
   }
-  return { text: text.trimEnd(), buckets }
+
+  // where the dashboard goes on after the bars, so the detail pane does not
+  // have to count header lines it does not control
+  const after = text.indexOf("\n", lastBucketEnd)
+  const tail = lastBucketEnd > 0 && after >= 0 ? text.slice(after + 1).replace(/^\n+/, "") : ""
+  return { text: text.trimEnd(), tail: tail.trimEnd(), buckets }
 }
 
 /** Best-effort one-line reason out of a failed CLI invocation. */

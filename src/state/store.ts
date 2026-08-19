@@ -337,8 +337,14 @@ function buildRepoRows(): RepoRow[] {
   const daemonRepos = state.status.data?.repos ?? []
   const declarations = state.declarations.data ?? []
 
+  // one identity rule for both passes: the merge matches on path or name, so
+  // the dedup below has to consume both, or a repo whose path differs in shape
+  // between the two surfaces is listed twice
+  const consumed = new Set<string>()
   const rows = list.map<RepoRow>((repo) => {
     const extra = daemonRepos.find((row) => row.path === repo.path || row.repo === repo.name)
+    if (extra) consumed.add(extra.path).add(extra.repo)
+    consumed.add(repo.path).add(repo.name)
     const declared = declarations.find((row) => row.path === repo.path || row.repo === repo.name)
     // the daemon reports one composite `workspace/project` slug
     const [statusWorkspace = "", statusProject = ""] = (extra?.workspace ?? "").split("/")
@@ -372,7 +378,7 @@ function buildRepoRows(): RepoRow[] {
   for (const row of daemonRepos) {
     // a row whose path is not a path is a summary line, not a repository
     if (!row.path.startsWith("/")) continue
-    if (rows.some((existing) => existing.path === row.path)) continue
+    if (consumed.has(row.path) || consumed.has(row.repo)) continue
     const [workspace = "", project = ""] = row.workspace.split("/")
     rows.push({
       name: row.repo,

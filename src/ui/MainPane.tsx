@@ -381,20 +381,20 @@ function SavingsDetail() {
           rows={(savings()?.buckets ?? []).map((bucket) => [
             { text: bucket.label, fg: theme.text },
             {
-              text: `${bar(bucket.percent, 14)} ${String(bucket.percent).padStart(5)}%`,
+              text: `${bar(bucket.percent, 14)} ${bucket.percentText.padStart(5)}%`,
               fg: shareColor(bucket.percent),
             },
             { text: humanCount(bucket.saved), fg: theme.text },
             { text: humanCount(bucket.total), fg: theme.dim },
-            { text: `$${bucket.usd}`, fg: theme.accent },
+            { text: `$${bucket.usdText}`, fg: theme.accent },
           ])}
         />
         <Blank />
 
         <Section title="dashboard" />
-        <For each={(savings()?.text ?? "").split("\n").slice(3)}>
-          {(row) => <text fg={theme.muted}>{row || " "}</text>}
-        </For>
+        {/* what the dashboard says after the bars: counting header lines drew
+            the three bucket bars a second time when the CLI grew a header */}
+        <For each={(savings()?.tail ?? "").split("\n")}>{(row) => <text fg={theme.muted}>{row || " "}</text>}</For>
       </Show>
     </box>
   )

@@ -75,11 +75,16 @@ export interface SavingsBucket {
   saved: number
   total: number
   usd: number
+  /** the figures exactly as printed — `33.80`, `2.92` — for display */
+  percentText: string
+  usdText: string
 }
 
 export interface Savings {
   /** rendered dashboard, kept verbatim for the detail pane */
   text: string
+  /** what the dashboard says after the last bucket bar */
+  tail: string
   buckets: SavingsBucket[]
   json?: unknown
 }

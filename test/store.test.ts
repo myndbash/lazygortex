@@ -269,3 +269,59 @@ describe("freshness of rows the repo listing never described", () => {
     expect(repoRows()[0]?.freshness).toBe("stale")
   })
 })
+
+describe("repoRows merges each repository once", () => {
+  test("a daemon row matched by name is not appended again under its own path", () => {
+    // pass 1 matches on path *or* name; the dedup used to consider only path,
+    // so a path that differs in shape between the two surfaces listed twice
+    setState("repos", "data", [repo("parser", "/home/u/parser")])
+    setState("status", "data", {
+      running: true,
+      fields: [],
+      workspaces: [],
+      mcpSessions: [],
+      repos: [
+        {
+          repo: "parser",
+          path: "/home/u/parser/",
+          workspace: "demouser/parser",
+          total: "8.7 MiB",
+          files: 270,
+          nodes: 11762,
+          edges: 48085,
+        },
+      ],
+    })
+
+    const rows = repoRows()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ name: "parser", path: "/home/u/parser", nodes: 11762 })
+  })
+
+  test("a repo only the daemon knows about is still merged in", () => {
+    setState("repos", "data", [repo("parser", "/home/u/parser")])
+    setState("status", "data", {
+      running: true,
+      fields: [],
+      workspaces: [],
+      mcpSessions: [],
+      repos: [
+        {
+          repo: "ledger",
+          path: "/home/u/ledger",
+          workspace: "demouser/ledger",
+          total: "1.9 MiB",
+          files: 101,
+          nodes: 2792,
+          edges: 10316,
+        },
+      ],
+    })
+
+    expect(
+      repoRows()
+        .map((row) => row.name)
+        .sort(),
+    ).toEqual(["ledger", "parser"])
+  })
+})
