@@ -43,6 +43,11 @@ jobs:
       - name: Build the npm bundle
         run: bun run build:bundle
 
+      # the notices are generated from what the bundle actually inlines, so a
+      # dependency that starts or stops being bundled has to be committed with it
+      - name: Third-party notices are current
+        run: git diff --exit-code THIRD-PARTY-NOTICES.txt
+
       - name: Smoke the bundle
         run: bun dist/cli.js --version
 
