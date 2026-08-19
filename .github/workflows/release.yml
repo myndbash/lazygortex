@@ -108,6 +108,10 @@ jobs:
     # after the release, not beside it: a failed publish should not leave a
     # release standing on its own
     needs: [binaries, release]
+    # tag pushes only. Trusted publishing attests whatever ref its OIDC token
+    # names, so a dispatch run from a branch would publish an attestation that
+    # describes the branch rather than the tag the release is named after
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -123,32 +127,20 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
+      # trusted publishing needs npm 11.5.1 or later; Node 22 still ships 10.x
+      - name: Upgrade npm
+        run: |
+          npm install -g npm@latest
+          npm --version
+
       - run: bun install --frozen-lockfile
       - run: bun run check
       - run: bun run build:bundle
 
-      # the secrets context cannot be read from a job- or step-level `if`, so
-      # the presence of the token becomes an output that can be
-      - id: token
-        name: Is a publish token configured?
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -n "$NPM_TOKEN" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::NPM_TOKEN is not set — skipping the npm publish. The release and its binaries are unaffected; add the secret and re-run this job to publish."
-          fi
-
-      # provenance is asked for here rather than in publishConfig, which would
-      # demand it of every publish including one from a laptop, where there is
-      # no provider to attest and npm refuses with `provider: null`.
-      # It attests what the runner built from *this* ref: on a dispatch run that
-      # is a branch, not the tag the release is named after, so the attestation
-      # would say something true about the wrong thing
+      # No token: the registry trusts this workflow, in this repository, through
+      # the OIDC identity `id-token: write` grants it, and attests the publish
+      # by itself. `--provenance` is not passed — asking for it explicitly is
+      # what a token-authenticated publish needs, and publishConfig demanding it
+      # is what made a publish by hand impossible.
       - name: Publish
-        if: steps.token.outputs.present == 'true'
-        run: npm publish ${{ github.event_name == 'push' && '--provenance' || '' }} --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
