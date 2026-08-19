@@ -52,6 +52,17 @@ All notable changes to this project are documented here. The format follows
   quit path exits in ten milliseconds, so a short session remembered nothing at all.
 - `g` and `G` scroll the detail pane when it has focus, like every other movement key. They used to move
   the hidden list cursor instead — swapping the repository being read — and did nothing at all on Logs.
+- The published package carries `THIRD-PARTY-NOTICES.txt` for the MIT and BSD-2-Clause code its bundle
+  inlines, which it shipped without before.
+- Building from a directory whose path contains a space works. It failed with `FileNotFound` naming a
+  percent-encoded path that does not exist on disk.
+- `solid-js` and `@opentui/core` are pinned to the versions the bundled binding was compiled against, so
+  the npm package and the release binaries cannot drift apart.
+
+### Added
+
+- `--check-renderer`, which loads the terminal renderer and exits non-zero if it cannot. `--version`
+  exits before the renderer is constructed, so it could not tell a working build from a broken one.
 
 ## [0.1.0] - 2026-08-18
 
