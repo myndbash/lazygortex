@@ -27,10 +27,12 @@ jobs:
             runner: ubuntu-latest
           - name: linux-arm64
             runner: ubuntu-24.04-arm
+          # macos-13 was retired: an unknown label queues for a runner that will
+          # never arrive rather than failing, and macos-14 is deprecated behind it
           - name: darwin-x64
-            runner: macos-13
+            runner: macos-15-intel
           - name: darwin-arm64
-            runner: macos-14
+            runner: macos-15
     steps:
       - uses: actions/checkout@v7
         with:
