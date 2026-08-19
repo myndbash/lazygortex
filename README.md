@@ -15,32 +15,32 @@ left, a detail pane on the right, one keystroke per action — and the mouse wor
 <br clear="right">
 
 ```text
- lazygortex │ ● daemon ready · up 4h26m                      5 repos · 9 sessions · v0.63.3
+ lazygortex │ ● daemon ready · up 3h12m                      5 repos · 4 sessions · v0.63.3
 ╭─ 1 Repos ──────────────────────────╮╭─ beta · ~/Work/beta ─────────────────────────────────────────╮
-│ ◌ .config                   181.0k ││ ── beta                                                      │
-│ ● parser                     11.8k ││ path            ~/Work/beta                                  │
-│ ● beta                        9.2k ││ workspace       org/beta                                     │
-│ ● ledger                      2.7k ││ branch          master                                       │
-│ ● gamma01                     2.1k ││ freshness       ● fresh — index matches HEAD                 │
-│                                    ││ last indexed    16h ago                                      │
+│ ◌ .config                   120.4k ││ ── beta                                                      │
+│ ● parser                     14.2k ││ path            ~/Work/beta                                  │
+│ ● beta                        8.4k ││ workspace       org/beta                                     │
+│ ● ledger                      3.1k ││ branch          master                                       │
+│ ● gamma01                     1.9k ││ freshness       ● fresh — index matches HEAD                 │
+│                                    ││ last indexed    12h ago                                      │
 │                                    ││                                                              │
 │                                    ││ ── index size                                                │
 │                                    ││ ┌───────┬───────┬────────┬─────────┐                         │
 ╰─── ● ok ▲ stale ◌ no git ○ none ───╯│ │ files │ nodes │  edges │ on disk │                         │
 ╭─ 2 Workspaces ─────────────────────╮│ ├───────┼───────┼────────┼─────────┤                         │
-│ 2 workspaces                       ││ │   672 │  9.2k │  35.9k │ 6.6 MiB │                         │
+│ 2 workspaces                       ││ │   540 │  8.4k │  31.2k │ 5.8 MiB │                         │
 ╰────────────────────────────────────╯│ └───────┴───────┴────────┴─────────┘                         │
 ╭─ 3 Projects ───────────────────────╮│                                                              │
 │ gamma01                    2 repos ││ ── graph                                                     │
 ╰────────────────────────────────────╯│ by kind                                                      │
-╭─ 4 Sessions ───────────────────────╮│ variable       ██████████████████ 147.2k                     │
-│ 9 connected                        ││ function       ██░░░░░░░░░░░░░░░░ 16.6k                      │
-╰────────────────────────────────────╯│ method         █░░░░░░░░░░░░░░░░░ 5.3k                       │
+╭─ 4 Sessions ───────────────────────╮│ variable       ██████████████████ 118.4k                     │
+│ 4 connected                        ││ function       ██░░░░░░░░░░░░░░░░ 14.7k                      │
+╰────────────────────────────────────╯│ method         █░░░░░░░░░░░░░░░░░ 4.8k                       │
 ╭─ 5 Savings ────────────────────────╮│                                                              │
-│ 41.4% saved · $2.54                ││                                                              │
+│ 38.2% saved · $1.90                ││                                                              │
 ╰────────────────────────────────────╯│                                                              │
 ╭─ 6 Daemon ─────────────────────────╮│                                                              │
-│ ready · 4h26m                      ││                                                              │
+│ ready · 3h12m                      ││                                                              │
 ╰────────────────────────────────────╯╰──────────────────────────────────────────────────────────────╯
  ready
  t track a repository   u untrack the selected repository   R re-index (clears a stale index)

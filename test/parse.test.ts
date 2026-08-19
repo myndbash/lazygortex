@@ -56,16 +56,16 @@ describe("parseSavings", () => {
   const DASHBOARD = `Gortex Token Savings
 ====================
 Store:          /home/u/.local/share/gortex/sidecar.sqlite
-Tracking since: 2026-08-17 08:35
-Last updated:   2026-08-19 08:29
+Tracking since: 2026-01-04 09:00
+Last updated:   2026-01-06 17:45
 
 
-Today       ██░░░░░░░░░░░░░░   13.4%  saved 41,393 / 309,685 tokens  $0.2070
-Last 7 days █████░░░░░░░░░░░   33.80%  saved 583,447 / 1,728,515 tokens  $2.92
-All time    █████░░░░░░░░░░░   33.80%  saved 583,447 / 1,728,515 tokens  $2.92
+Today       ██░░░░░░░░░░░░░░   13.3%  saved 24,000 / 180,000 tokens  $0.1500
+Last 7 days █████░░░░░░░░░░░   33.80%  saved 400,000 / 1,200,000 tokens  $2.40
+All time    █████░░░░░░░░░░░   33.80%  saved 400,000 / 1,200,000 tokens  $2.40
 
 Cost avoided per model (all time):
-  claude-opus-5 $3.94   (471 calls · 787,653 tokens saved)
+  claude-opus-5 $3.00   (300 calls · 600,000 tokens saved)
 `
   const savings = parseSavings(DASHBOARD)
 
@@ -73,19 +73,19 @@ Cost avoided per model (all time):
     expect(savings.buckets).toHaveLength(3)
     expect(savings.buckets[0]).toEqual({
       label: "Today",
-      percent: 13.4,
-      percentText: "13.4",
-      saved: 41393,
-      total: 309685,
-      usd: 0.207,
-      usdText: "0.2070",
+      percent: 13.3,
+      percentText: "13.3",
+      saved: 24000,
+      total: 180000,
+      usd: 0.15,
+      usdText: "0.1500",
     })
-    expect(savings.buckets[2]?.saved).toBe(583447)
+    expect(savings.buckets[2]?.saved).toBe(400000)
   })
 
   test("keeps the figures as printed, because a cost is not a quantity to reformat", () => {
-    // Number("0.2070") renders back as 0.207, and Number("33.80") as 33.8
-    expect(savings.buckets[0]?.usdText).toBe("0.2070")
+    // Number("0.1500") renders back as 0.15, and Number("33.80") as 33.8
+    expect(savings.buckets[0]?.usdText).toBe("0.1500")
     expect(savings.buckets[1]?.percentText).toBe("33.80")
   })
 
