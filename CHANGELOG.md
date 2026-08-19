@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-19
+
+No user-facing changes. Released through the project's own workflow so that the package on npm carries
+a provenance attestation, which the hand-published 0.1.0 could not.
+
+### Changed
+
+- Provenance is requested by the release workflow rather than demanded by `publishConfig`, which made a
+  publish from anywhere but CI impossible.
+
 ## [0.1.0] - 2026-08-19
 
 First public release.
@@ -36,5 +46,6 @@ First public release.
   exits before the renderer is constructed, so it cannot tell a working build from a broken one.
 - `THIRD-PARTY-NOTICES.txt`, generated at build time from the licences of the code the bundle inlines.
 
-[Unreleased]: https://github.com/myndbash/lazygortex/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/myndbash/lazygortex/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/myndbash/lazygortex/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/myndbash/lazygortex/releases/tag/v0.1.0

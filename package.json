@@ -1,6 +1,6 @@
 {
   "name": "lazygortex",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A terminal UI for the Gortex code-graph daemon, in the spirit of lazygit and lazydocker",
   "keywords": [
     "gortex",
