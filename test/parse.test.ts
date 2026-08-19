@@ -1,63 +1,46 @@
 import { describe, expect, test } from "bun:test"
 import { errorMessage, parseDaemonStatus, parseSavings, parseWorkspaceList, stripAnsi } from "../src/gortex/parse.ts"
-
-const STATUS = ` daemon    v0.63.3+d4801638
- pid       1237
- socket    /run/user/1000/gortex.sock
- uptime    1h39m
- state     ready (warmup 28s)
- sessions  9
- memory    39.9 MiB
- search    sqlite-fts5  docs=44710  disk-resident
- trigram   live=0/3  heap=0 B/256.0 MiB  idle_ttl=10m0s
- runtime   alloc=39.9 MiB  sys=384.4 MiB  gc=391  goroutines=112
-
-workspaces:
-┌───────────┬───────┬───────────────┬───────┬────────┬────────┐
-│ workspace │ repos │ projects      │ files │  nodes │  edges │
-├───────────┼───────┼───────────────┼───────┼────────┼────────┤
-│ org       │     2 │ emc2, ti-gerr │   729 │  11201 │  43765 │
-│ demouser  │     3 │ bridge, dots  │  3378 │ 195370 │ 473875 │
-└───────────┴───────┴───────────────┴───────┴────────┴────────┘
-
-tracked repos:
-┌─────────┬───────────────┬──────────┬───────┬────────┬────────┬──────────────────────┐
-│ repo    │ workspace     │ total    │ files │  nodes │  edges │ path                 │
-├─────────┼───────────────┼──────────┼───────┼────────┼────────┼──────────────────────┤
-│ .config │ demouser/conf │ 95.0 MiB │  3009 │ 180966 │ 416076 │ /home/demouser/.confi│
-│ beta    │ org/beta      │  6.6 MiB │   672 │   9229 │  35852 │ /home/demouser/emc2  │
-└─────────┴───────────────┴──────────┴───────┴────────┴────────┴──────────────────────┘
-
-MCP sessions:
-┌──────────┬─────────────┬─────────┬───────────┬──────────────────┐
-│ id       │ client      │ version │ connected │ cwd              │
-├──────────┼─────────────┼─────────┼───────────┼──────────────────┤
-│ e8de4387 │ claude-code │ 2.1.234 │     1m38s │ /home/demouser   │
-└──────────┴─────────────┴─────────┴───────────┴──────────────────┘
-`
+import { STATUS_CAPTURE, STATUS_VERSION } from "./fixtures/daemon-status.ts"
 
 describe("parseDaemonStatus", () => {
-  const status = parseDaemonStatus(STATUS)
+  const status = parseDaemonStatus(STATUS_CAPTURE)
 
   test("reads the key/value block", () => {
     expect(status.running).toBe(true)
-    expect(status.pid).toBe("1237")
-    expect(status.version).toBe("v0.63.3+d4801638")
-    expect(status.uptime).toBe("1h39m")
-    expect(status.state).toBe("ready (warmup 28s)")
-    expect(status.memory).toBe("39.9 MiB")
+    expect(status.pid).toBe("1257")
+    expect(status.version).toBe(STATUS_VERSION)
+    expect(status.uptime).toBe("1h48m")
+    expect(status.state).toBe("ready (warmup 43s)")
+    expect(status.memory).toBe("173.5 MiB")
     expect(status.fields.length).toBe(10)
   })
 
   test("reads every table", () => {
     expect(status.workspaces).toHaveLength(2)
-    expect(status.workspaces[0]).toMatchObject({ workspace: "org", repos: 2, nodes: 11201 })
+    expect(status.workspaces[0]).toMatchObject({ workspace: "org", repos: 2, nodes: 12207 })
 
-    expect(status.repos).toHaveLength(2)
-    expect(status.repos[1]).toMatchObject({ repo: "beta", workspace: "org/beta", files: 672, edges: 35852 })
+    // five tracked repos, and not the `other` totals row behind the mid-rule
+    expect(status.repos).toHaveLength(5)
+    expect(status.repos.map((row) => row.repo)).not.toContain("other")
+    expect(status.repos[2]).toMatchObject({ repo: "beta", workspace: "org/beta", files: 672, edges: 35852 })
 
-    expect(status.mcpSessions).toHaveLength(1)
-    expect(status.mcpSessions[0]).toMatchObject({ client: "claude-code", version: "2.1.234" })
+    // the control session this very call registered is dropped
+    expect(status.mcpSessions).toHaveLength(8)
+    expect(status.mcpSessions.every((session) => session.client === "claude-code")).toBe(true)
+  })
+
+  test("reads full paths, which the CLI does not truncate", () => {
+    // the fixture this replaced pinned `/home/demouser/.confi`, a truncation
+    // the CLI has never emitted
+    expect(status.repos.map((row) => row.path)).toContain("/home/demouser/.config")
+    for (const row of status.repos) expect(row.path.endsWith("…")).toBe(false)
+  })
+
+  test("keys the tracked-repos columns by header, past the four the CLI added", () => {
+    // nodes_b, edges_b, search_b and vectors_b sit between `edges` and `path`
+    // and no type in the repo declares them
+    const config = status.repos.find((row) => row.repo === ".config")
+    expect(config).toMatchObject({ nodes: 180966, edges: 416076, path: "/home/demouser/.config" })
   })
 
   test("reports a stopped daemon instead of throwing", () => {

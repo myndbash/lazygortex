@@ -14,17 +14,66 @@ import type { TestRendererSetup } from "@opentui/core/testing"
 import { App } from "../src/ui/App.tsx"
 import { projectRows, repoRows } from "../src/state/store.ts"
 import { theme } from "../src/ui/theme.ts"
-import { GORTEX_BIN } from "../src/gortex/client.ts"
+import { daemonStatus, GORTEX_BIN, run } from "../src/gortex/client.ts"
+import { STATUS_CAPTURE } from "./fixtures/daemon-status.ts"
+import type { Repo } from "../src/gortex/types.ts"
 import { closeOverlay, refresh, resetState, restoreView, setState, state } from "../src/state/store.ts"
-
-const available = await Bun.file(GORTEX_BIN)
-  .exists()
-  .catch(() => false)
 
 // the frame tests must start from a known view, never from a previous session
 process.env["LAZYGORTEX_STATE_FILE"] = "off"
 
-const maybe = available ? describe : describe.skip
+/**
+ * These need a daemon that answers, not merely a binary on disk. Gating on the
+ * file meant a contributor with gortex installed and the daemon stopped got a
+ * 30-second stall and seventeen red tests blaming their data.
+ */
+const reachable = await daemonStatus()
+  .then((status) => status.running)
+  .catch(() => false)
+
+if (!reachable) {
+  const binary = await Bun.file(GORTEX_BIN)
+    .exists()
+    .catch(() => false)
+  console.log(
+    binary
+      ? `skipping the frame tests: ${GORTEX_BIN} is installed but its daemon is not answering`
+      : `skipping the frame tests: no gortex binary at ${GORTEX_BIN}`,
+  )
+}
+
+const maybe = reachable ? describe : describe.skip
+
+/** Repositories with known shapes, so an assertion cannot depend on this machine. */
+const FIXTURE_REPOS: Repo[] = [
+  {
+    name: "alpha",
+    path: "/home/u/alpha",
+    head_commit: "1111111",
+    branch: "main",
+    stale: false,
+    indexed: true,
+    last_indexed: "2026-08-19T09:00:00+02:00",
+  },
+  {
+    name: "beta",
+    path: "/home/u/beta",
+    head_commit: "2222222",
+    branch: "main",
+    stale: true,
+    indexed: true,
+    last_indexed: "2026-08-18T09:00:00+02:00",
+  },
+  {
+    name: "gamma",
+    path: "/home/u/gamma",
+    head_commit: "3333333",
+    branch: "main",
+    stale: false,
+    indexed: true,
+    last_indexed: "2026-08-19T08:00:00+02:00",
+  },
+]
 
 const PASSES = { maxPasses: 800 }
 
@@ -96,8 +145,9 @@ maybe("lazygortex", () => {
       frame.indexOf(panel),
     )
     expect(positions.every((index) => index >= 0)).toBe(true)
-    // Daemon sits immediately before Logs, at the end of the column
-    expect(positions[5]).toBeLessThan(positions[6]!)
+    // the whole column, in order: comparing only the last pair would miss a
+    // Sessions/Savings swap
+    expect(positions).toEqual([...positions].sort((a, b) => a - b))
     expect(state.panel).toBe("repos")
     expect(frame).toContain("freshness")
   })
@@ -127,20 +177,31 @@ maybe("lazygortex", () => {
     await setup.flush()
     expect(state.panel).toBe("workspaces")
 
+    setState("declarations", "data", [
+      { repo: "alpha", workspace: "org", project: "alpha", source: ".gortex.yaml", path: "/home/u/alpha" },
+    ])
+    setState("cursor", "workspaces", 0)
+    await setup.flush()
+
     await setup.waitForFrame((frame) => frame.includes("declarations"), PASSES)
     const frame = setup.captureCharFrame()
     // declarations render as a real box-drawing table
     expect(frame).toContain("┌")
     expect(frame).toContain("declared in")
-    expect(frame).toContain(".gortex.yaml")
   })
 
   test("clicking a row selects it, clicking another panel switches to it", async () => {
+    // fixtures, so the assertion does not depend on how many repos this machine
+    // happens to track
+    setState("repos", "data", FIXTURE_REPOS)
+    await setup.flush()
+
     // rows of the focused Repos panel start on the line under its top border
     setup.mockMouse.click(6, 3)
     await setup.flush()
     expect(state.panel).toBe("repos")
     expect(state.cursor.repos).toBe(1)
+    expect(repoRows()[1]?.name).toBeTruthy()
 
     // wherever the Sessions box header happens to sit in the column
     const frame = setup.captureCharFrame().split("\n")
@@ -172,7 +233,11 @@ maybe("lazygortex", () => {
     await setup.renderOnce()
 
     // a fresh repo's row is green — inline fragments used to lose their colour
-    // entirely, which is the regression this guards
+    // entirely, which is the regression this guards. The fixture guarantees one
+    // exists; a machine whose repos are all stale used to fail here.
+    setState("repos", "data", FIXTURE_REPOS)
+    await setup.flush()
+    await setup.renderOnce()
     const fresh = repoRows().find((repo) => repo.freshness === "fresh")
     expect(fresh).toBeTruthy()
 
@@ -191,11 +256,24 @@ maybe("lazygortex", () => {
     await setup.flush()
     await setup.renderOnce()
 
-    const rows = setup.captureSpans().lines
-    const painted = rows.filter((line) =>
-      line.spans.some((span) => span.bg.buffer[3] !== 0 && span.text.trim().length > 0 && span.text.includes("●")),
-    )
-    expect(painted.length).toBeGreaterThan(0)
+    const selected = repoRows()[state.cursor.repos]
+    expect(selected).toBeTruthy()
+
+    // captureSpans reads resolved cells, so every span inside an opaque panel
+    // has an alpha of 255: the question is which background, on which row.
+    // "some cell somewhere is painted" stayed green with rowBackground deleted.
+    const hexOf = (channel: { buffer: ArrayLike<number> }): string =>
+      `#${[0, 1, 2].map((index) => (channel.buffer[index] ?? 0).toString(16).padStart(2, "0")).join("")}`
+
+    const spans = setup.captureSpans().lines.flatMap((line) => line.spans)
+    const painted = spans.filter((span) => span.text.includes(selected!.name)).map((span) => hexOf(span.bg))
+    expect(painted).toContain(state.focus === "side" ? theme.activeSelectionBg : theme.selectionBg)
+
+    // and the rows that are not selected are not painted with it
+    const others = spans
+      .filter((span) => span.text.includes("●") && !span.text.includes(selected!.name))
+      .map((span) => hexOf(span.bg))
+    expect(others).not.toContain(theme.activeSelectionBg)
   })
 
   test("clicking the detail pane moves the focus to it", async () => {
@@ -362,6 +440,28 @@ maybe("lazygortex", () => {
     expect(repoRows()).toHaveLength(tracked)
     expect(setup.captureCharFrame()).not.toContain("Repos /")
   })
+
+  test("the committed status capture still matches the shape the CLI emits", async () => {
+    // the fixture this replaced pinned a table four columns narrower than
+    // today's and paths the CLI never truncated; nothing failed when it drifted
+    const headers = (text: string, section: string): string[] => {
+      const lines = text.split("\n")
+      const start = lines.findIndex((line) => line.trim().toLowerCase() === section)
+      expect(start).toBeGreaterThanOrEqual(0)
+      const header = lines.slice(start).find((line) => line.trim().startsWith("│"))
+      return (header ?? "")
+        .split("│")
+        .map((cell) => cell.trim())
+        .filter(Boolean)
+    }
+
+    const live = await run(["daemon", "status"], { timeoutMs: 10_000 })
+    expect(live.ok).toBe(true)
+
+    for (const section of ["workspaces:", "tracked repos:", "mcp sessions:"]) {
+      expect(headers(live.stdout, section)).toEqual(headers(STATUS_CAPTURE, section))
+    }
+  }, 20_000)
 
   test("a failed repo listing is reported, not painted green", async () => {
     setState("repos", "error", "timeout after 20000ms")

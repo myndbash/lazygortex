@@ -137,6 +137,7 @@ export const [state, setState] = createStore<State>(initialState())
 
 /** Back to a freshly-started app; used by the frame tests. */
 export function resetState(): void {
+  generation += 1
   inFlight.clear()
   setState(initialState())
 }
@@ -160,21 +161,45 @@ export function clearMessage(): void {
 type SlotKey = "status" | "repos" | "savings" | "logs" | "graph" | "index" | "declarations"
 
 /**
- * One load per slot at a time. A caller that arrives mid-flight waits for the
- * running load instead of being dropped, so `await refresh.x()` always means
- * "the slot is populated".
+ * One load per slot and parameter at a time. A caller that arrives mid-flight
+ * waits for the running load instead of being dropped, so `await refresh.x()`
+ * always means "the slot is populated".
+ *
+ * The key carries the parameters, not just the slot: `logs` is fetched with a
+ * tail size and `graph` with a repo path, and keying on the slot alone handed a
+ * caller asking for 400 lines the 200-line read that happened to be running.
  */
-const inFlight = new Map<SlotKey, Promise<void>>()
+const inFlight = new Map<string, Promise<void>>()
 
-function load<K extends SlotKey>(key: K, fetcher: () => Promise<State[K]["data"]>): Promise<void> {
-  const running = inFlight.get(key)
-  if (running) return running
-  const promise = runLoad(key, fetcher)
-  inFlight.set(key, promise)
+/**
+ * Bumped by resetState. A load started before the reset must not write its
+ * result into the state that replaced it, nor evict a newer load's entry from
+ * the map on its way out.
+ */
+let generation = 0
+
+interface LoadOptions {
+  /** what the fetcher was called with, when the slot takes parameters */
+  id?: string
+  /** run even if a load for the same key is in flight — for post-mutation reads */
+  force?: boolean
+}
+
+function load<K extends SlotKey>(
+  key: K,
+  fetcher: () => Promise<State[K]["data"]>,
+  options: LoadOptions = {},
+): Promise<void> {
+  const id = options.id === undefined ? key : `${key}:${options.id}`
+  const running = inFlight.get(id)
+  if (running && !options.force) return running
+  const promise = runLoad(key, id, fetcher)
+  inFlight.set(id, promise)
   return promise
 }
 
-async function runLoad<K extends SlotKey>(key: K, fetcher: () => Promise<State[K]["data"]>): Promise<void> {
+async function runLoad<K extends SlotKey>(key: K, id: string, fetcher: () => Promise<State[K]["data"]>): Promise<void> {
+  const era = generation
   setState(
     produce((draft) => {
       ;(draft[key] as Async<unknown>).loading = true
@@ -182,6 +207,7 @@ async function runLoad<K extends SlotKey>(key: K, fetcher: () => Promise<State[K
   )
   try {
     const data = await fetcher()
+    if (era !== generation) return
     setState(
       produce((draft) => {
         const slot = draft[key] as Async<unknown>
@@ -193,6 +219,7 @@ async function runLoad<K extends SlotKey>(key: K, fetcher: () => Promise<State[K
     )
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error)
+    if (era !== generation) return
     setState(
       produce((draft) => {
         const slot = draft[key] as Async<unknown>
@@ -201,7 +228,9 @@ async function runLoad<K extends SlotKey>(key: K, fetcher: () => Promise<State[K
       }),
     )
   } finally {
-    inFlight.delete(key)
+    // a reset has already cleared the map, and the entry under this key now
+    // belongs to a load started after it
+    if (era === generation) inFlight.delete(id)
   }
 }
 
@@ -218,24 +247,27 @@ export async function checkBinary(): Promise<boolean> {
 }
 
 export const refresh = {
-  status: () => load("status", () => gortex.daemonStatus()),
-  repos: () => load("repos", () => gortex.repos()),
-  savings: () => load("savings", () => gortex.savings()),
-  logs: () => load("logs", () => gortex.logs(state.logTail)),
-  declarations: () => load("declarations", () => gortex.workspaceList()),
-  graph: async () => {
-    const path = anyRepoPath()
-    if (!path) return
-    await load("graph", () => gortex.graphSummary(path))
+  status: (options?: LoadOptions) => load("status", () => gortex.daemonStatus(), options),
+  repos: (options?: LoadOptions) => load("repos", () => gortex.repos(), options),
+  savings: (options?: LoadOptions) => load("savings", () => gortex.savings(), options),
+  logs: (options?: LoadOptions) => {
+    const tail = state.logTail
+    return load("logs", () => gortex.logs(tail), { ...options, id: String(tail) })
   },
-  index: async () => {
+  declarations: (options?: LoadOptions) => load("declarations", () => gortex.workspaceList(), options),
+  graph: async (options?: LoadOptions) => {
     const path = anyRepoPath()
     if (!path) return
-    await load("index", () => gortex.indexHealth(path))
+    await load("graph", () => gortex.graphSummary(path), { ...options, id: path })
+  },
+  index: async (options?: LoadOptions) => {
+    const path = anyRepoPath()
+    if (!path) return
+    await load("index", () => gortex.indexHealth(path), { ...options, id: path })
   },
   /** the cheap slots, safe to poll */
-  fast: async () => {
-    await Promise.all([refresh.status(), refresh.repos()])
+  fast: async (options?: LoadOptions) => {
+    await Promise.all([refresh.status(options), refresh.repos(options)])
   },
   all: async () => {
     await refresh.fast()
@@ -581,9 +613,11 @@ export async function command(label: string, action: () => Promise<CommandResult
     notify("error", `${label}: ${error instanceof Error ? error.message : String(error)}`)
   } finally {
     setState("busy", null)
-    await refresh.fast()
-    void refresh.graph()
-    void refresh.declarations()
+    // forced: a poll that started before the mutation would otherwise be the
+    // read this awaits, and it cannot see what the command just changed
+    await refresh.fast({ force: true })
+    void refresh.graph({ force: true })
+    void refresh.declarations({ force: true })
   }
 }
 
