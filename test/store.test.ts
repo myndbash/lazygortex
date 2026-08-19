@@ -5,8 +5,8 @@
 
 import { beforeEach, describe, expect, test } from "bun:test"
 import { resolve } from "node:path"
-import { isTracked, normalizePath, repoRows, resetState, setState } from "../src/state/store.ts"
-import type { Repo } from "../src/gortex/types.ts"
+import { isTracked, normalizePath, projectRows, repoRows, resetState, setState } from "../src/state/store.ts"
+import type { DaemonRepo, Repo, WorkspaceDeclaration } from "../src/gortex/types.ts"
 
 process.env["LAZYGORTEX_STATE_FILE"] = "off"
 
@@ -73,5 +73,84 @@ describe("isTracked", () => {
   test("a `..` path normalises to the same answer as the canonical one", () => {
     expect(isTracked(normalizePath("/home/u/beta/../alpha"))).toBe(true)
     expect(isTracked("/home/u/beta/../alpha")).toBe(false)
+  })
+})
+
+describe("repoRows and the workspace slug", () => {
+  function daemonRepo(repo: string, path: string, workspace: string, nodes: number): DaemonRepo {
+    return { repo, path, workspace, total: "1.0 MiB", files: 10, nodes, edges: nodes * 2 }
+  }
+
+  function declaration(row: Partial<WorkspaceDeclaration>): WorkspaceDeclaration {
+    return { repo: "", workspace: "", project: "", source: "", path: "", ...row }
+  }
+
+  beforeEach(() => {
+    setState("repos", "data", [repo("gamma01", "/home/u/gamma01"), repo("service@org", "/home/u/service")])
+    setState("status", "data", {
+      running: true,
+      fields: [],
+      workspaces: [],
+      mcpSessions: [],
+      repos: [
+        daemonRepo("gamma01", "/home/u/gamma01", "org/gamma01", 2860),
+        daemonRepo("service@org", "/home/u/service", "org/gamma01", 2197),
+      ],
+    })
+  })
+
+  test("a repo that declares nothing keeps the slug the daemon inherited for it", () => {
+    setState("declarations", "data", [
+      declaration({
+        repo: "gamma01",
+        workspace: "org",
+        project: "gamma01",
+        source: ".gortex.yaml",
+        path: "/home/u/gamma01",
+      }),
+      declaration({ repo: "service@org", source: "default", path: "/home/u/service" }),
+    ])
+
+    const rows = repoRows()
+    expect(rows.map((row) => [row.name, row.workspace, row.project])).toEqual([
+      ["gamma01", "org", "gamma01"],
+      ["service@org", "org", "gamma01"],
+    ])
+  })
+
+  test("so the grouping does not split when the declarations land", () => {
+    const before = projectRows()
+    setState("declarations", "data", [
+      declaration({
+        repo: "gamma01",
+        workspace: "org",
+        project: "gamma01",
+        source: ".gortex.yaml",
+        path: "/home/u/gamma01",
+      }),
+      declaration({ repo: "service@org", source: "default", path: "/home/u/service" }),
+    ])
+    const after = projectRows()
+
+    // the panel used to redraw itself a second after start-up: one group of two
+    // became one group of one plus a phantom named after the placeholder prose
+    expect(before.map((row) => row.key)).toEqual(["org/gamma01"])
+    expect(after.map((row) => row.key)).toEqual(["org/gamma01"])
+    expect(after[0]?.members).toHaveLength(2)
+    expect(after[0]?.nodes).toBe(5057)
+  })
+
+  test("a declared slug still overrides what the daemon reports", () => {
+    setState("declarations", "data", [
+      declaration({
+        repo: "service@org",
+        workspace: "org",
+        project: "redmine",
+        source: ".gortex.yaml",
+        path: "/home/u/service",
+      }),
+    ])
+
+    expect(repoRows().find((row) => row.name === "service@org")?.project).toBe("redmine")
   })
 })

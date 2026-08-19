@@ -203,15 +203,27 @@ export function errorMessage(stderr: string, stdout: string, fallback = "command
   return line.replace(/^Error:\s*/i, "").trim()
 }
 
-/** Parse the `gortex workspace list` table. */
+/**
+ * Parse the `gortex workspace list` table.
+ *
+ * A repo with no `.gortex.yaml` gets the literal prose `(default: <name>)` in
+ * its workspace and project cells: a rendering of "nothing is declared here",
+ * not a slug. The SOURCE column reads `default` for exactly those rows, which
+ * is the reliable test — the prose is dropped so no caller can adopt it as a
+ * repo's workspace, its project, or a key to group on.
+ */
 export function parseWorkspaceList(raw: string): WorkspaceDeclaration[] {
   const lines = stripAnsi(raw).split("\n")
   const { rows } = readTable(lines, 0)
-  return rows.map((row) => ({
-    repo: row["REPO"] ?? row["repo"] ?? "",
-    workspace: row["WORKSPACE"] ?? row["workspace"] ?? "",
-    project: row["PROJECT"] ?? row["project"] ?? "",
-    source: row["SOURCE"] ?? row["source"] ?? "",
-    path: row["PATH"] ?? row["path"] ?? "",
-  }))
+  return rows.map((row) => {
+    const source = row["SOURCE"] ?? row["source"] ?? ""
+    const inherited = source === "default"
+    return {
+      repo: row["REPO"] ?? row["repo"] ?? "",
+      workspace: inherited ? "" : (row["WORKSPACE"] ?? row["workspace"] ?? ""),
+      project: inherited ? "" : (row["PROJECT"] ?? row["project"] ?? ""),
+      source,
+      path: row["PATH"] ?? row["path"] ?? "",
+    }
+  })
 }

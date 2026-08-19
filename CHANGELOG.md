@@ -18,6 +18,11 @@ All notable changes to this project are documented here. The format follows
   untracked and re-indexing it.
 - An active filter is visible: the panel title carries the needle, the summary reads `N of M tracked`,
   and an empty list says which needle excluded everything.
+- The Projects panel no longer rewrites itself a second after start-up. A repo with no `.gortex.yaml`
+  was taking the literal `(default: <name>)` from `workspace list` as its workspace and project, which
+  split a real project's node count and added a group named after the placeholder.
+- `r` on the Projects panel reloads the declarations the grouping is built from, instead of spending
+  1.2 seconds on an index-health call the panel does not display. Sessions no longer pays for it either.
 
 ## [0.1.0] - 2026-08-18
 

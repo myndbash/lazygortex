@@ -253,7 +253,16 @@ export const refresh = {
       case "repos":
         await Promise.all([refresh.fast(), refresh.graph()])
         return
+      case "projects":
+        // the grouping and the 'declared in' line are built from declarations,
+        // and no polling interval covers that slot
+        await Promise.all([refresh.fast(), refresh.declarations()])
+        return
+      case "sessions":
+        return refresh.fast()
       default:
+        // Daemon is the only panel that displays the index-health call, which
+        // costs over a second
         await Promise.all([refresh.fast(), refresh.index()])
         return
     }
@@ -310,8 +319,10 @@ export function repoRows(options: { filtered?: boolean } = {}): RepoRow[] {
     return {
       name: repo.name,
       path: repo.path,
-      workspace: declared?.workspace ?? statusWorkspace,
-      project: declared?.project ?? statusProject,
+      // `||`, not `??`: a repo that declares nothing parses to empty cells and
+      // has to fall through to the slug the daemon inherited for it
+      workspace: declared?.workspace || statusWorkspace,
+      project: declared?.project || statusProject,
       branch: repo.branch ?? "",
       head: repo.head_commit ?? "",
       freshness,

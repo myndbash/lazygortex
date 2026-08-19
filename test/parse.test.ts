@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { errorMessage, parseDaemonStatus, parseSavings, stripAnsi } from "../src/gortex/parse.ts"
+import { errorMessage, parseDaemonStatus, parseSavings, parseWorkspaceList, stripAnsi } from "../src/gortex/parse.ts"
 
 const STATUS = ` daemon    v0.63.3+d4801638
  pid       1237
@@ -80,6 +80,41 @@ All time    ███████░░░░░░░░░   43.7%  saved 492,
     expect(savings.buckets).toHaveLength(3)
     expect(savings.buckets[0]).toEqual({ label: "Today", percent: 28.5, saved: 5158, total: 18130, usd: 0.0258 })
     expect(savings.buckets[2]?.saved).toBe(492816)
+  })
+})
+
+const WORKSPACE_LIST = `┌─────────────┬────────────────────────┬────────────────────────┬──────────────┬──────────────────────────┐
+│ REPO        │ WORKSPACE              │ PROJECT                │ SOURCE       │ PATH                     │
+├─────────────┼────────────────────────┼────────────────────────┼──────────────┼──────────────────────────┤
+│ beta        │ org                    │ beta                   │ .gortex.yaml │ /home/demouser/Work/beta │
+│ service@org │ (default: service@org) │ (default: service@org) │ default      │ /home/demouser/service   │
+└─────────────┴────────────────────────┴────────────────────────┴──────────────┴──────────────────────────┘
+`
+
+describe("parseWorkspaceList", () => {
+  const rows = parseWorkspaceList(WORKSPACE_LIST)
+
+  test("reads a declared row as it stands", () => {
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toEqual({
+      repo: "beta",
+      workspace: "org",
+      project: "beta",
+      source: ".gortex.yaml",
+      path: "/home/demouser/Work/beta",
+    })
+  })
+
+  test("drops the `(default: …)` prose an undeclared repo renders", () => {
+    // the cell is a rendering of "nothing declared", not a slug: adopting it
+    // gave the Projects panel a phantom `(default: service@org)` group
+    expect(rows[1]).toEqual({
+      repo: "service@org",
+      workspace: "",
+      project: "",
+      source: "default",
+      path: "/home/demouser/service",
+    })
   })
 })
 

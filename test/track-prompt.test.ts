@@ -8,14 +8,10 @@
  */
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test"
+import { fakeGortex } from "./fixtures/fake-gortex.ts"
 
-const dir = `${process.env["TMPDIR"] ?? "/tmp"}/lazygortex-track-prompt-${process.pid}`
-const log = `${dir}/argv.log`
-const fake = `${dir}/gortex`
+const fake = await fakeGortex("track-prompt")
 const scenario = new URL("fixtures/track-prompt-scenario.tsx", import.meta.url).pathname
-
-await Bun.write(fake, `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> ${JSON.stringify(log)}\nexit 0\n`)
-await Bun.$`chmod +x ${fake}`.quiet()
 
 interface Outcome {
   opened: string | null
@@ -28,26 +24,19 @@ interface Outcome {
 
 async function run(name: string): Promise<Outcome> {
   const result = await Bun.$`bun --preload @opentui/solid/preload ${scenario} ${name}`
-    .env({ ...process.env, GORTEX_BIN: fake, LAZYGORTEX_STATE_FILE: "off" })
+    .env({ ...process.env, GORTEX_BIN: fake.bin, LAZYGORTEX_STATE_FILE: "off" })
     .quiet()
   const line = result.stdout.toString().trim().split("\n").at(-1) ?? "{}"
-  const file = Bun.file(log)
-  const argv = (await file.exists()) ? await file.text() : ""
+  const calls = await fake.calls()
   return {
     ...(JSON.parse(line) as Omit<Outcome, "tracked">),
-    tracked: argv.split("\n").filter((entry) => entry.startsWith("track ")),
+    tracked: calls.filter((entry) => entry.startsWith("track ")),
   }
 }
 
-beforeEach(async () => {
-  await Bun.file(log)
-    .unlink()
-    .catch(() => {})
-})
+beforeEach(() => fake.clear())
 
-afterAll(async () => {
-  await Bun.$`rm -rf ${dir}`.quiet()
-})
+afterAll(() => fake.remove())
 
 describe("the track prompt", () => {
   test("a path that is not tracked reaches the CLI, resolved", async () => {
