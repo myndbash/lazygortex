@@ -7,6 +7,7 @@
  */
 
 import { resolve } from "node:path"
+import { createMemo, createRoot } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import * as gortex from "../gortex/client.ts"
 import type { EnrichKind } from "../gortex/client.ts"
@@ -298,7 +299,7 @@ export interface RepoRow {
  * satisfy the first test, so it is reported as unversioned rather than stale —
  * otherwise `~/.config` looks permanently out of date.
  */
-export function repoRows(options: { filtered?: boolean } = {}): RepoRow[] {
+function buildRepoRows(): RepoRow[] {
   const list = state.repos.data ?? []
   const daemonRepos = state.status.data?.repos ?? []
   const declarations = state.declarations.data ?? []
@@ -356,11 +357,30 @@ export function repoRows(options: { filtered?: boolean } = {}): RepoRow[] {
     })
   }
 
-  const needle = options.filtered === false ? "" : state.filter.repos.trim().toLowerCase()
-  const filtered = needle
-    ? rows.filter((row) => row.name.toLowerCase().includes(needle) || row.path.toLowerCase().includes(needle))
-    : rows
-  return filtered.sort((a, b) => b.nodes - a.nodes || a.name.localeCompare(b.name))
+  return rows.sort((a, b) => b.nodes - a.nodes || a.name.localeCompare(b.name))
+}
+
+/**
+ * Two memos over that build, in a root of their own because they outlive every
+ * component that reads them.
+ *
+ * The list is derived from three polled slots and costs O(N^2) to assemble,
+ * while one table render reads it once per row plus once per rule — and each of
+ * those reads used to rebuild it. Now a poll rebuilds it once and every reader
+ * afterwards gets the same array back, which also lets `<For>` reuse its rows.
+ */
+const [allRepoRows, visibleRepoRows] = createRoot(() => {
+  const all = createMemo(buildRepoRows)
+  const visible = createMemo(() => {
+    const needle = state.filter.repos.trim().toLowerCase()
+    if (!needle) return all()
+    return all().filter((row) => row.name.toLowerCase().includes(needle) || row.path.toLowerCase().includes(needle))
+  })
+  return [all, visible] as const
+})
+
+export function repoRows(options: { filtered?: boolean } = {}): RepoRow[] {
+  return options.filtered === false ? allRepoRows() : visibleRepoRows()
 }
 
 export function currentRepo(): RepoRow | null {

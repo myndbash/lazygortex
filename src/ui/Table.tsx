@@ -6,7 +6,7 @@
  * always occupies exactly one line.
  */
 
-import { For, Show } from "solid-js"
+import { createMemo, For, Show } from "solid-js"
 import { c, Row, type Piece } from "./Row.tsx"
 import { theme, truncate } from "./theme.ts"
 
@@ -66,7 +66,12 @@ export function Table(props: {
   /** highlight colour for one row, by index */
   highlight?: (index: number) => string | undefined
 }) {
-  const widths = () => layout(props.columns, props.rows, props.width)
+  // `props.rows` is a getter over the caller's row expression, and the rules,
+  // the header and every row read the widths: without these memos the caller's
+  // expression ran N+6 times per pass, and the Daemon table's ran repoRows()
+  // three times per row on top of that
+  const rows = createMemo(() => props.rows)
+  const widths = createMemo(() => layout(props.columns, rows(), props.width))
 
   const rowParts = (row: TableRow): Piece[] => {
     const parts: Piece[] = [c(theme.border, "│")]
@@ -91,8 +96,8 @@ export function Table(props: {
         ]}
       />
       <text fg={theme.border}>{rule(widths(), "├", "┼", "┤")}</text>
-      <Show when={props.rows.length > 0} fallback={<text fg={theme.dim}>{"│ no rows"}</text>}>
-        <For each={props.rows}>{(row, index) => <Row parts={rowParts(row)} bg={props.highlight?.(index())} />}</For>
+      <Show when={rows().length > 0} fallback={<text fg={theme.dim}>{"│ no rows"}</text>}>
+        <For each={rows()}>{(row, index) => <Row parts={rowParts(row)} bg={props.highlight?.(index())} />}</For>
       </Show>
       <text fg={theme.border}>{rule(widths(), "└", "┴", "┘")}</text>
     </box>

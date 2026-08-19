@@ -192,3 +192,37 @@ describe("repoRows and rows that are not repositories", () => {
     expect(projectRows().map((row) => row.key)).toEqual(["demouser/parser"])
   })
 })
+
+describe("repoRows is memoised", () => {
+  beforeEach(() => {
+    setState("repos", "data", [repo("alpha", "/home/u/alpha"), repo("beta", "/home/u/beta")])
+  })
+
+  test("two reads with nothing changed return the same array", () => {
+    // a table render reads this once per row plus once per rule, and each read
+    // used to rebuild an O(N^2) list from three polled slots
+    expect(repoRows()).toBe(repoRows())
+    expect(repoRows({ filtered: false })).toBe(repoRows({ filtered: false }))
+  })
+
+  test("a poll that changes the data invalidates it", () => {
+    const before = repoRows()
+    setState("repos", "data", [repo("alpha", "/home/u/alpha")])
+    const after = repoRows()
+
+    expect(after).not.toBe(before)
+    expect(after.map((row) => row.name)).toEqual(["alpha"])
+  })
+
+  test("setting a filter invalidates the view but not the whole list", () => {
+    const all = repoRows({ filtered: false })
+    setState("filter", "repos", "alpha")
+
+    expect(repoRows()).toHaveLength(1)
+    expect(repoRows({ filtered: false })).toBe(all)
+  })
+
+  test("an empty needle hands back the unfiltered array itself", () => {
+    expect(repoRows()).toBe(repoRows({ filtered: false }))
+  })
+})

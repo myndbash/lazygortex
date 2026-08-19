@@ -363,6 +363,27 @@ maybe("lazygortex", () => {
     expect(setup.captureCharFrame()).not.toContain("Repos /")
   })
 
+  test("the logs view renders a bounded window and says what it left out", async () => {
+    setup.mockInput.pressKey("7")
+    await setup.flush()
+    expect(state.panel).toBe("logs")
+
+    // the tail key can reach 5000 lines, and every one used to become a live
+    // renderable that the 3-second poll tore down and rebuilt
+    setState(
+      "logs",
+      "data",
+      Array.from({ length: 1000 }, (_, index) => `log line number ${index}`),
+    )
+    await setup.flush()
+
+    const frame = setup.captureCharFrame()
+    expect(frame).toContain("500 older of 1000 buffered lines not shown")
+    // the window starts at 500: the pane is showing the top of what it rendered
+    expect(frame).toContain("log line number 500")
+    expect(frame).not.toContain("log line number 499")
+  })
+
   test("tracking a repo the daemon already has is refused, not re-run", async () => {
     const tracked = state.repos.data?.[0]?.path
     expect(tracked).toBeTruthy()

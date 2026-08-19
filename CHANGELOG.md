@@ -28,6 +28,11 @@ All notable changes to this project are documented here. The format follows
   row for the status call that was reading it.
 - The daemon's `other` totals row — its unattributed memory, not a repository — no longer appears in the
   Repos panel, the repo count, or as a `/other` project.
+- The Daemon panel no longer freezes the UI while it polls. Each table cell rebuilt the whole repository
+  list to colour itself, which cost about 7.4 seconds of blocking work every three seconds on a 50-repo
+  daemon; it now costs about 45 ms.
+- The Logs panel renders the newest 500 lines and says how many older ones are buffered, instead of
+  building a live renderable for every line in a buffer that reaches 5000.
 
 ## [0.1.0] - 2026-08-18
 

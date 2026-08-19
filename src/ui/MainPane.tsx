@@ -429,6 +429,11 @@ function HealthSection(props: { health: IndexHealth }) {
 function DaemonDetail() {
   const paneWidth = usePaneWidth()
   const status = () => state.status.data
+  // the ceiling a cell colours against does not depend on the cell, and maxOf
+  // walks the whole repo list: computing it per cell made the table quadratic
+  const maxFiles = createMemo(() => maxOf((row) => row.files))
+  const maxNodes = createMemo(() => maxOf((row) => row.nodes))
+  const maxEdges = createMemo(() => maxOf((row) => row.edges))
   const sum = (pick: (repo: { files: number; nodes: number; edges: number }) => number) =>
     humanCount((status()?.repos ?? []).reduce((total, repo) => total + pick(repo), 0))
 
@@ -476,27 +481,9 @@ function DaemonDetail() {
           rows={(status()?.repos ?? []).map((repo) => [
             { text: repo.repo, fg: theme.text },
             { text: repo.workspace, fg: theme.info },
-            {
-              text: humanCount(repo.files),
-              fg: magnitudeColor(
-                repo.files,
-                maxOf((row) => row.files),
-              ),
-            },
-            {
-              text: humanCount(repo.nodes),
-              fg: magnitudeColor(
-                repo.nodes,
-                maxOf((row) => row.nodes),
-              ),
-            },
-            {
-              text: humanCount(repo.edges),
-              fg: magnitudeColor(
-                repo.edges,
-                maxOf((row) => row.edges),
-              ),
-            },
+            { text: humanCount(repo.files), fg: magnitudeColor(repo.files, maxFiles()) },
+            { text: humanCount(repo.nodes), fg: magnitudeColor(repo.nodes, maxNodes()) },
+            { text: humanCount(repo.edges), fg: magnitudeColor(repo.edges, maxEdges()) },
             { text: repo.total, fg: theme.dim },
           ])}
         />
@@ -537,15 +524,36 @@ function parseLogLine(raw: string): LogLine {
   }
 }
 
+/**
+ * How many log lines are rendered at once. The buffer runs to 5000 and a poll
+ * replaces it every three seconds, so the view keeps the newest slice and says
+ * what it left out. Windowing to the visible height instead would need the
+ * scroll offset, which the scrollbox owns and does not report.
+ */
+export const LOG_WINDOW = 500
+
+/** The newest `limit` entries, and how many older ones were left out. */
+export function windowLines<T>(lines: T[], limit: number = LOG_WINDOW): { visible: T[]; hidden: number } {
+  if (lines.length <= limit) return { visible: lines, hidden: 0 }
+  return { visible: lines.slice(lines.length - limit), hidden: lines.length - limit }
+}
+
 function LogsDetail() {
-  const lines = () => (state.logs.data ?? []).filter((row) => row.trim().length > 0).map(parseLogLine)
+  const view = createMemo(() => {
+    const raw = (state.logs.data ?? []).filter((row) => row.trim().length > 0)
+    const { visible, hidden } = windowLines(raw)
+    return { lines: visible.map(parseLogLine), hidden, total: raw.length }
+  })
   return (
     <box style={{ flexDirection: "column" }}>
       <ErrorLine error={state.logs.error} />
-      <Show when={lines().length === 0}>
+      <Show when={view().total === 0}>
         <text fg={theme.dim}>{state.logs.loading ? "loading…" : "no log lines"}</text>
       </Show>
-      <For each={lines()}>
+      <Show when={view().hidden > 0}>
+        <text fg={theme.dim}>{`… ${view().hidden} older of ${view().total} buffered lines not shown`}</text>
+      </Show>
+      <For each={view().lines}>
         {(row) => (
           <Row
             parts={[
