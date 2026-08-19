@@ -24,6 +24,8 @@ import { glyph, humanCount, theme, truncate } from "./theme.ts"
 export const SIDE_WIDTH = 38
 const BOXED_HEIGHT = 3
 const BARE_HEIGHT = 1
+/** Rows the focused panel's box needs before its list has anywhere to go. */
+export const FOCUSED_HEIGHT = 4
 
 /** What a freshness mark means. Rendered as the Repos panel's bottom title. */
 export const FRESHNESS: Record<Freshness, { mark: string; label: string; fg: string }> = {
@@ -180,6 +182,17 @@ function PanelList(props: { panel: PanelId; capacity: number }) {
     return Math.max(0, Math.min(total - capacity, cursor() - Math.floor(capacity / 2)))
   }
   const visible = () => rows().slice(start(), start() + Math.max(1, props.capacity))
+  /**
+   * What is off-screen in each direction. The old line subtracted a `start()`
+   * already clamped to the bottom, so it read `0 more` for the whole of the
+   * bottom of every list.
+   */
+  const overflow = () => {
+    const above = start()
+    const below = rows().length - start() - visible().length
+    const parts = [above > 0 ? `${glyph.up} ${above}` : "", below > 0 ? `${glyph.down} ${below} more` : ""]
+    return parts.filter(Boolean).join("  ")
+  }
 
   return (
     <box style={{ flexDirection: "column", flexGrow: 1 }}>
@@ -205,20 +218,23 @@ function PanelList(props: { panel: PanelId; capacity: number }) {
           )
         }}
       </For>
-      <Show when={rows().length > props.capacity}>
-        <text fg={theme.dim}>{`${glyph.down} ${rows().length - start() - Math.max(1, props.capacity)} more`}</text>
+      <Show when={overflow() !== ""}>
+        <text fg={theme.dim}>{overflow()}</text>
       </Show>
     </box>
   )
 }
 
-export function SidePanel(props: { capacity: number; compact: boolean }) {
+export function SidePanel(props: { capacity: number; compact: boolean; panels: PanelId[]; hidden: number }) {
   return (
     <box style={{ width: SIDE_WIDTH, flexDirection: "column", flexShrink: 0 }}>
-      <For each={PANELS}>
-        {(panel, index) => {
+      <For each={props.panels}>
+        {(panel) => {
           const focused = () => state.panel === panel
           const info = () => summary(panel)
+          // the digit is the panel's own number, which stays put even when the
+          // roster shows a window into the list
+          const index = () => PANELS.indexOf(panel)
           // an accessor, not a constant: the filter suffix has to appear and
           // disappear with state.filter
           const title = () => {
@@ -257,7 +273,7 @@ export function SidePanel(props: { capacity: number; compact: boolean }) {
                   flexGrow: focused() ? 1 : 0,
                   flexShrink: focused() ? 1 : 0,
                   height: focused() ? undefined : BOXED_HEIGHT,
-                  minHeight: focused() ? 4 : BOXED_HEIGHT,
+                  minHeight: focused() ? FOCUSED_HEIGHT : BOXED_HEIGHT,
                 }}
               >
                 <Show when={focused()} fallback={<text fg={info().fg}>{truncate(info().text, SIDE_WIDTH - 4)}</text>}>
@@ -268,6 +284,9 @@ export function SidePanel(props: { capacity: number; compact: boolean }) {
           )
         }}
       </For>
+      <Show when={props.hidden > 0}>
+        <text fg={theme.dim}>{` ${glyph.down} ${props.hidden} more panels · press their digit`}</text>
+      </Show>
     </box>
   )
 }

@@ -33,6 +33,17 @@ All notable changes to this project are documented here. The format follows
   daemon; it now costs about 45 ms.
 - The Logs panel renders the newest 500 lines and says how many older ones are buffered, instead of
   building a live renderable for every line in a buffer that reaches 5000.
+- Tables fit the pane they are drawn in. Below about 85 columns they used to draw wider than the pane,
+  which wrapped the rules across two lines and clipped every row mid-cell with no right border.
+- Overlays fit the terminal. A modal wider than the screen lost its left columns, border included, and
+  the surviving text read as different, plausible keys — `b` for next panel, `Dn` for page down.
+- The help overlay keeps its `esc or ? to close` line at 80x24 and cuts what does not fit with a marker,
+  instead of painting its own content over itself and over the status bar.
+- The header shortens itself instead of welding its two halves into one token (`up 3h20m10 repos`), and
+  the detail pane's title is truncated to the pane rather than dropped when it does not fit.
+- The side column's overflow line no longer reads `↓ 0 more` at the bottom of a list; it counts what is
+  off-screen above and below. On a terminal too short for all seven panels, the ones left out are
+  announced rather than silently dropped.
 
 ## [0.1.0] - 2026-08-18
 

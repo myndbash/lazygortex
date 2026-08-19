@@ -3,11 +3,12 @@
  * renderer root through a Portal so they float above the two columns.
  */
 
-import { For, Match, Show, Switch, createSignal, type Accessor } from "solid-js"
+import { For, Match, Show, Switch, createMemo, createSignal, type Accessor } from "solid-js"
+import { useTerminalDimensions } from "@opentui/solid"
 import { closeOverlay, PANEL_TITLES, state, type Overlay } from "../state/store.ts"
 import { globalBindings, panelBindings, type Binding } from "./keymap.ts"
 import { FRESHNESS } from "./SidePanel.tsx"
-import { c, Row } from "./Row.tsx"
+import { c, Row, type Piece } from "./Row.tsx"
 import { glyph, theme, truncate } from "./theme.ts"
 
 /**
@@ -15,7 +16,12 @@ import { glyph, theme, truncate } from "./theme.ts"
  * into the renderer root: an absolute child of a sized box lays out against
  * that box, which is exactly the centring behaviour a modal wants.
  */
-function Frame(props: { title: string; width: number; children: unknown }) {
+function Frame(props: { title: string; width: number; children: unknown; footer?: string }) {
+  const dimensions = useTerminalDimensions()
+  // a centred modal wider than the terminal loses its left columns, border
+  // included, and the surviving text reads as a different, plausible key
+  const width = () => Math.max(20, Math.min(props.width, dimensions().width - 2))
+
   return (
     <box
       style={{
@@ -36,7 +42,7 @@ function Frame(props: { title: string; width: number; children: unknown }) {
         borderStyle="rounded"
         borderColor={theme.borderFocus}
         style={{
-          width: props.width,
+          width: width(),
           maxHeight: "90%",
           flexDirection: "column",
           padding: 1,
@@ -44,64 +50,103 @@ function Frame(props: { title: string; width: number; children: unknown }) {
           zIndex: 101,
         }}
       >
-        <box style={{ flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>{props.children as never}</box>
+        {/* shrinks and clips inside the frame: at 80x24 the content used to
+            spill past the bottom border and paint over the status bar */}
+        <box style={{ flexDirection: "column", flexShrink: 1, overflow: "hidden" }}>{props.children as never}</box>
+        <Show when={props.footer}>
+          {/* pinned, so the line telling the user how to close the dialog is
+              the one thing truncation cannot take away */}
+          <box style={{ flexDirection: "column", flexShrink: 0 }}>
+            <text fg={theme.dim}>{truncate(props.footer ?? "", width() - 4)}</text>
+          </box>
+        </Show>
       </box>
     </box>
   )
 }
 
-function KeyList(props: { bindings: Binding[] }) {
-  return (
-    <box style={{ flexDirection: "column", flexShrink: 0 }}>
-      <For each={props.bindings}>
-        {(binding) => <Row parts={[c(theme.info, binding.label.padEnd(8)), c(theme.text, binding.description)]} />}
-      </For>
-    </box>
-  )
+const HELP_WIDTH = 78
+/** Frame chrome the content does not get: two borders, two paddings, a footer. */
+const HELP_CHROME = 5
+
+function keyRow(binding: Binding, room: number): Piece[] {
+  return [c(theme.info, binding.label.padEnd(8)), c(theme.text, truncate(binding.description, room))]
 }
 
+/**
+ * The help is built as a list of single lines rather than a tree of boxes, so
+ * it can be measured against the terminal and cut to fit.
+ *
+ * An overflowing modal does not simply spill: opentui clamps the children that
+ * do not fit back inside the frame, and they paint on top of the lines already
+ * there — at 80x24 this dialog used to render `t─ Repostrackla repository` and
+ * drop the only line that says how to close it.
+ */
 function HelpOverlay() {
-  const scoped = () => panelBindings().filter((binding) => !binding.panels || binding.panels.includes(state.panel))
-  // digits are summarised as one line instead of six
-  const global = () => globalBindings().filter((binding) => !/^\d$/.test(binding.label))
-  const half = () => Math.ceil(global().length / 2)
+  const dimensions = useTerminalDimensions()
+  const frameWidth = () => Math.max(20, Math.min(HELP_WIDTH, dimensions().width - 2))
+  const room = () => frameWidth() - 4
+  // two columns need the width for two columns
+  const columns = () => (room() >= 68 ? 2 : 1)
+
+  const rows = createMemo<Piece[][]>(() => {
+    const scoped = panelBindings().filter((binding) => !binding.panels || binding.panels.includes(state.panel))
+    // digits are summarised as one line instead of six
+    const global = globalBindings().filter((binding) => !/^\d$/.test(binding.label))
+    const out: Piece[][] = [[c(theme.accent, `── ${PANEL_TITLES[state.panel]} panel `)]]
+
+    if (scoped.length === 0) out.push([c(theme.dim, "no panel-specific keys")])
+    else for (const binding of scoped) out.push(keyRow(binding, room() - 8))
+
+    out.push([], [c(theme.accent, "── global ")])
+    if (columns() === 2) {
+      const half = Math.ceil(global.length / 2)
+      const column = Math.floor((room() - 4) / 2)
+      for (let index = 0; index < half; index++) {
+        const left = global[index]!
+        const right = global[index + half]
+        out.push([
+          c(theme.info, left.label.padEnd(8)),
+          c(theme.text, truncate(left.description, column - 8).padEnd(column - 4)),
+          ...(right ? keyRow(right, column - 8) : []),
+        ])
+      }
+    } else {
+      for (const binding of global) out.push(keyRow(binding, room() - 8))
+    }
+    out.push([c(theme.info, "1…7".padEnd(8)), c(theme.text, "jump straight to a panel")])
+
+    out.push([], [c(theme.accent, "── repository marks ")])
+    out.push([c(FRESHNESS.fresh.fg, `${FRESHNESS.fresh.mark} fresh    `), c(theme.text, FRESHNESS.fresh.label)])
+    out.push([
+      c(FRESHNESS.stale.fg, `${FRESHNESS.stale.mark} stale    `),
+      c(theme.text, `${FRESHNESS.stale.label} — press R to re-index`),
+    ])
+    out.push([
+      c(FRESHNESS.unversioned.fg, `${FRESHNESS.unversioned.mark} no git   `),
+      c(theme.text, FRESHNESS.unversioned.label),
+    ])
+    out.push([
+      c(FRESHNESS.unindexed.fg, `${FRESHNESS.unindexed.mark} unindexed`),
+      c(theme.text, ` ${FRESHNESS.unindexed.label}`),
+    ])
+    return out
+  })
+
+  const visible = createMemo(() => {
+    const available = Math.max(3, Math.floor(dimensions().height * 0.9) - HELP_CHROME)
+    if (rows().length <= available) return rows()
+    const kept = rows().slice(0, available - 1)
+    return [...kept, [c(theme.dim, `… ${rows().length - kept.length} more lines — grow the terminal`)]]
+  })
 
   return (
-    <Frame title={`Keys ${glyph.bullet} ${PANEL_TITLES[state.panel]}`} width={78}>
-      <text fg={theme.accent}>{`── ${PANEL_TITLES[state.panel]} panel `}</text>
-      <Show when={scoped().length > 0} fallback={<text fg={theme.dim}>no panel-specific keys</text>}>
-        <KeyList bindings={scoped()} />
-      </Show>
-      <text> </text>
-      <text fg={theme.accent}>{"── global "}</text>
-      <box style={{ flexDirection: "row", gap: 4, flexShrink: 0 }}>
-        <KeyList bindings={global().slice(0, half())} />
-        <KeyList bindings={global().slice(half())} />
-      </box>
-      <Row parts={[c(theme.info, "1…6".padEnd(8)), c(theme.text, "jump straight to a panel")]} />
-      <text> </text>
-      <text fg={theme.accent}>{"── repository marks "}</text>
-      <Row parts={[c(FRESHNESS.fresh.fg, `${FRESHNESS.fresh.mark} fresh    `), c(theme.text, FRESHNESS.fresh.label)]} />
-      <Row
-        parts={[
-          c(FRESHNESS.stale.fg, `${FRESHNESS.stale.mark} stale    `),
-          c(theme.text, `${FRESHNESS.stale.label} — press R to re-index`),
-        ]}
-      />
-      <Row
-        parts={[
-          c(FRESHNESS.unversioned.fg, `${FRESHNESS.unversioned.mark} no git   `),
-          c(theme.text, FRESHNESS.unversioned.label),
-        ]}
-      />
-      <Row
-        parts={[
-          c(FRESHNESS.unindexed.fg, `${FRESHNESS.unindexed.mark} unindexed`),
-          c(theme.text, FRESHNESS.unindexed.label),
-        ]}
-      />
-      <text> </text>
-      <text fg={theme.dim}>esc or ? to close · panels, rows and buttons also respond to the mouse</text>
+    <Frame
+      title={`Keys ${glyph.bullet} ${PANEL_TITLES[state.panel]}`}
+      width={HELP_WIDTH}
+      footer="esc or ? to close · panels, rows and buttons also respond to the mouse"
+    >
+      <For each={visible()}>{(parts) => <Row parts={parts} />}</For>
     </Frame>
   )
 }
@@ -126,7 +171,7 @@ function ConfirmOverlay(props: { title: string; body: string; confirmLabel: stri
 function PromptOverlay(props: { title: string; body: string; initial: string; onSubmit: (value: string) => void }) {
   const [value, setValue] = createSignal(props.initial)
   return (
-    <Frame title={props.title} width={72}>
+    <Frame title={props.title} width={72} footer={`enter to accept ${glyph.bullet} esc to cancel`}>
       <text fg={theme.muted}>{props.body}</text>
       <text> </text>
       <input
@@ -141,8 +186,6 @@ function PromptOverlay(props: { title: string; body: string; initial: string; on
           cursorColor: theme.borderFocus,
         }}
       />
-      <text> </text>
-      <text fg={theme.dim}>enter to accept {glyph.bullet} esc to cancel</text>
     </Frame>
   )
 }
@@ -153,7 +196,7 @@ function MenuOverlay(props: {
   onPick: (value: string) => void
 }) {
   return (
-    <Frame title={props.title} width={54}>
+    <Frame title={props.title} width={54} footer={`press a number ${glyph.bullet} esc to cancel`}>
       <For each={props.options}>
         {(option, index) => (
           <box style={{ height: 1, flexShrink: 0 }} onMouseDown={() => props.onPick(option.value)}>
@@ -161,8 +204,6 @@ function MenuOverlay(props: {
           </box>
         )}
       </For>
-      <text> </text>
-      <text fg={theme.dim}>press a number {glyph.bullet} esc to cancel</text>
     </Frame>
   )
 }

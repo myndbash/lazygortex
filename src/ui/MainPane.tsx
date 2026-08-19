@@ -595,6 +595,7 @@ function paneTitle(): string {
 
 export function MainPane() {
   let scrollbox: ScrollBoxRenderable | undefined
+  const paneWidth = usePaneWidth()
 
   onMount(() => {
     setScroller((delta) => scrollbox?.scrollBy(delta))
@@ -602,7 +603,10 @@ export function MainPane() {
 
   return (
     <box
-      title={` ${truncate(paneTitle(), 60)} `}
+      // against the live width, not a constant: opentui drops a border title
+      // that does not fit rather than shortening it, so a deep path used to
+      // take the pane's title away entirely
+      title={` ${truncate(paneTitle(), Math.max(8, paneWidth()))} `}
       titleColor={state.focus === "main" ? theme.borderFocus : theme.muted}
       border
       borderStyle="rounded"
