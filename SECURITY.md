@@ -10,18 +10,22 @@ a public issue. You can expect an acknowledgement within a week.
 
 Being a front end for a local daemon, the honest scope matters more than a promise:
 
-- **It runs one binary: `gortex`.** Every read and every action is a subprocess call to the CLI
-  resolved from `$GORTEX_BIN`, then `PATH`, then `~/.local/bin/gortex`. There is no other executable
-  and no shell interpolation — arguments are passed as an argv array, never through a shell.
+- **It runs `gortex`, and a clipboard tool when you ask it to.** Every read and every action is a
+  subprocess call to the CLI resolved from `$GORTEX_BIN`, then `PATH`, then `~/.local/bin/gortex`.
+  The one other executable is the clipboard helper behind the `y` key — `wl-copy`, `pbcopy`, `xclip`
+  or `xsel`, whichever is present. There is no shell interpolation anywhere: arguments are passed as
+  an argv array, never through a shell.
 - **It makes no network connections of its own.** It has no HTTP client and no telemetry. What
   `gortex` itself does when you ask it to index, enrich or upgrade is gortex's business.
 - **It writes exactly one file on its own initiative:** `$XDG_STATE_HOME/lazygortex/state.json`
   (default `~/.local/state/lazygortex/state.json`), holding the last panel, the last selected
   repository path and the log tail size. Set `LAZYGORTEX_STATE_FILE=off` to disable that, or to a
   path to move it.
-- **Everything else that writes asks first.** Untracking a repository, stopping or restarting the
-  daemon, re-indexing, and `gortex init` (which writes MCP and instruction files _into your
-  repository_) all go through a confirmation dialog.
+- **Everything else that writes asks first**, with one exception. Untracking a repository, stopping
+  or restarting the daemon, re-indexing, and `gortex init` (which writes MCP and instruction files
+  _into your repository_) all go through a confirmation dialog. Setting a repository's workspace with
+  `W` goes through a prompt instead: it asks for the new slug and acts on what you type, so the
+  keystroke that starts it is not the keystroke that commits it.
 - **Clipboard**: pressing `y` shells out to `wl-copy`, `pbcopy`, `xclip` or `xsel` if present, and
   otherwise emits an OSC 52 sequence, which your terminal may or may not honour.
 

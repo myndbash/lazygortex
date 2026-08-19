@@ -165,7 +165,8 @@ without it.
 
 ## Keys
 
-Press `?` for the full list, which is generated from the same table the key handler uses.
+Press `?` for the keys that apply where you are, generated from the same table the key handler
+uses — panel keys for the focused panel, then the global ones.
 
 ### Global
 
@@ -232,7 +233,7 @@ worktree or a split front end and back end land several repos under one project.
 - **Projects** shows the other axis: each slug with its member repos, their branches, freshness and
   sizes, so a multi-repo project reads as one unit.
 
-`W` on a repo writes a new `workspace[/project]`; `/` filters either panel, `y` yanks the slug.
+`W` on a repo writes a new `workspace[/project]`; `/` filters the Projects panel, `y` yanks the slug.
 
 ## Layout of the code
 
@@ -277,13 +278,14 @@ and `bg` set on an inline span, so `Row` never uses one.
 ## Tests
 
 ```bash
-bun test          # parser unit tests + frame tests against the real daemon
-bun run check     # typecheck + tests
+bun test          # unit tests, plus frame tests against the real daemon
+bun run check     # typecheck + format check + markdownlint + peer check + tests
 ```
 
 The frame tests boot the whole app in OpenTUI's memory renderer, drive it with synthetic key
-presses and mouse clicks, and assert on the characters that land on screen. They skip themselves
-when no `gortex` binary is present.
+presses and mouse clicks, and assert on the characters that land on screen. They need a daemon that
+answers and skip themselves without one, saying which of the two reasons applied; everything else —
+the parsers, the store, the layout, the overlays, the subprocess handling — runs anywhere.
 
 ## Not exposed
 
@@ -293,11 +295,12 @@ it builds a working set for a coding agent, a per-task answer rather than a stat
 
 ## What it does to your machine
 
-It runs one binary — `gortex` — as a subprocess, with arguments passed as an argv array and never
-through a shell. It makes no network calls of its own and collects nothing. The only file it writes
-unprompted is the remembered view at `$XDG_STATE_HOME/lazygortex/state.json`; everything else that
-writes — untrack, re-index, `gortex init`, stopping the daemon — asks first. [SECURITY.md](SECURITY.md)
-spells this out in full.
+It runs `gortex` as a subprocess, with arguments passed as an argv array and never through a shell,
+and shells out to a clipboard tool when you press `y`. It makes no network calls of its own and
+collects nothing. The only file it writes unprompted is the remembered view at
+`$XDG_STATE_HOME/lazygortex/state.json`; everything else that writes — untrack, re-index,
+`gortex init`, stopping the daemon — asks first, and `W` asks for the new slug before it writes one.
+[SECURITY.md](SECURITY.md) spells this out in full.
 
 ## Contributing
 
@@ -305,7 +308,7 @@ Bug reports and panel ideas are welcome — see [CONTRIBUTING.md](CONTRIBUTING.m
 the house rules, and [CHANGELOG.md](CHANGELOG.md) for what changed when.
 
 ```bash
-bun install && bun run check   # typecheck + format + tests, exactly what CI runs
+bun install && bun run check   # typecheck, format, markdownlint, peer check, tests — what CI runs
 ```
 
 ## Built with

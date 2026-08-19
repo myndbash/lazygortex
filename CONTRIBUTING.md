@@ -18,14 +18,17 @@ the Solid binding are bundled at build time, which is also why an installed copy
 ## The loop
 
 ```bash
-bun run check        # typecheck + format check + tests: what CI runs
-bun test             # parser and colour units, plus frame tests
+bun run check        # typecheck, format check, markdownlint, peer check, tests: what CI runs
+bun test             # unit tests, plus frame tests when a daemon answers
 bun run format       # prettier, pinned to the exact version CI uses
+bun run check:peers  # an unmet peer means the bundle ships a version it was not built against
 ```
 
 Frame tests boot the real app in OpenTUI's memory renderer, drive it with synthetic keys and mouse
 clicks, and assert on the characters and colours that land on screen. They skip themselves when no
-`gortex` binary is present, so CI still runs the pure units.
+daemon answers — CI included — so keep logic testable without one: the parsers, the store, the
+layout helpers, the overlays and the subprocess handling all have tests that run anywhere, and those
+are the ones CI actually executes.
 
 **Assert colour with `captureSpans()`, never `captureCharFrame()`.** A character frame cannot show
 colour, which is how a bug where every fragment rendered white survived several rounds of review.

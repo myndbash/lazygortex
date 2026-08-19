@@ -125,7 +125,10 @@ jobs:
       - run: bun run check
       - run: bun run build:bundle
 
+      # provenance attests what the runner built from *this* ref: on a dispatch
+      # run that is a branch, not the tag the release is named after, so the
+      # attestation would say something true about the wrong thing
       - name: Publish
-        run: npm publish --provenance --access public
+        run: npm publish ${{ github.event_name == 'push' && '--provenance' || '' }} --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
