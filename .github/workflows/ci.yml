@@ -35,6 +35,11 @@ jobs:
       - name: Lint docs
         run: bun run lint:md
 
+      # solid-js is inlined into the published bundle, so an unmet peer is a
+      # statement that what we ship was built against a version we do not ship
+      - name: Peer dependencies
+        run: bun run check:peers
+
       # The frame tests need a gortex daemon and skip themselves without one,
       # so what runs here is the parser and colour units.
       - name: Test
@@ -48,8 +53,13 @@ jobs:
       - name: Third-party notices are current
         run: git diff --exit-code THIRD-PARTY-NOTICES.txt
 
+      # --version exits before the renderer is ever constructed, and opentui
+      # defers a failed native-module import to the first render, so a broken
+      # platform package used to pass every gate green
       - name: Smoke the bundle
-        run: bun dist/cli.js --version
+        run: |
+          bun dist/cli.js --version
+          bun dist/cli.js --check-renderer
 
   package:
     runs-on: ubuntu-latest
@@ -71,3 +81,4 @@ jobs:
           echo '{"name":"consumer","private":true}' > package.json
           bun add /tmp/lazygortex-*.tgz
           ./node_modules/.bin/lazygortex --version
+          ./node_modules/.bin/lazygortex --check-renderer

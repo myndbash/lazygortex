@@ -47,7 +47,7 @@ THIS IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRE
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ------------------------------------------------------------------------
-solid-js 1.9.14 (MIT)
+solid-js 1.9.12 (MIT)
 ------------------------------------------------------------------------
 
 MIT License

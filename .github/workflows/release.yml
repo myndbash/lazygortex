@@ -59,8 +59,12 @@ jobs:
       - name: Compile
         run: bun run scripts/build.ts --outfile "dist/lazygortex-${{ matrix.name }}"
 
+      # --check-renderer is the half that touches the native module; --version
+      # returns 0 even when the renderer cannot be loaded at all
       - name: Smoke the binary
-        run: ./dist/lazygortex-${{ matrix.name }} --version
+        run: |
+          ./dist/lazygortex-${{ matrix.name }} --version
+          ./dist/lazygortex-${{ matrix.name }} --check-renderer
 
       - name: Checksum
         working-directory: dist
