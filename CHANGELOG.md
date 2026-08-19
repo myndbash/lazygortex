@@ -6,85 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-### Fixed
-
-- Prompt overlays now run their callback. `/` (filter), `t` (track) and `W` (set workspace) closed
-  their dialog and did nothing at all, as did any mouse click on a confirm button or a menu option.
-- The key that opens a prompt is no longer typed into it, so `/` filters for `needle` and not
-  `/needle`.
-- An emptied Track prompt no longer starts indexing the directory lazygortex was launched from, and a
-  path containing `..` is resolved before it is compared with what the daemon tracks.
-- The already-tracked check ignores the panel filter, instead of reporting a hidden repository as
-  untracked and re-indexing it.
-- An active filter is visible: the panel title carries the needle, the summary reads `N of M tracked`,
-  and an empty list says which needle excluded everything.
-- The Projects panel no longer rewrites itself a second after start-up. A repo with no `.gortex.yaml`
-  was taking the literal `(default: <name>)` from `workspace list` as its workspace and project, which
-  split a real project's node count and added a group named after the placeholder.
-- `r` on the Projects panel reloads the declarations the grouping is built from, instead of spending
-  1.2 seconds on an index-health call the panel does not display. Sessions no longer pays for it either.
-- The Sessions list holds still. It was emitted in the daemon's randomised map order and re-sorted on
-  every 3-second poll, so the selected row changed record without a keypress, and it carried an extra
-  row for the status call that was reading it.
-- The daemon's `other` totals row — its unattributed memory, not a repository — no longer appears in the
-  Repos panel, the repo count, or as a `/other` project.
-- The Daemon panel no longer freezes the UI while it polls. Each table cell rebuilt the whole repository
-  list to colour itself, which cost about 7.4 seconds of blocking work every three seconds on a 50-repo
-  daemon; it now costs about 45 ms.
-- The Logs panel renders the newest 500 lines and says how many older ones are buffered, instead of
-  building a live renderable for every line in a buffer that reaches 5000.
-- Tables fit the pane they are drawn in. Below about 85 columns they used to draw wider than the pane,
-  which wrapped the rules across two lines and clipped every row mid-cell with no right border.
-- Overlays fit the terminal. A modal wider than the screen lost its left columns, border included, and
-  the surviving text read as different, plausible keys — `b` for next panel, `Dn` for page down.
-- The help overlay keeps its `esc or ? to close` line at 80x24 and cuts what does not fit with a marker,
-  instead of painting its own content over itself and over the status bar.
-- The header shortens itself instead of welding its two halves into one token (`up 3h20m10 repos`), and
-  the detail pane's title is truncated to the pane rather than dropped when it does not fit.
-- The side column's overflow line no longer reads `↓ 0 more` at the bottom of a list; it counts what is
-  off-screen above and below. On a terminal too short for all seven panels, the ones left out are
-  announced rather than silently dropped.
-- A repository listing that fails is reported, instead of every repository being marked fresh with
-  `index matches HEAD` and a stale count of zero. A repo the daemon knows about but the listing does not
-  describe is marked unknown rather than green.
-- The header counts the repositories the panel below it lists, so the two numbers cannot disagree.
-- The remembered panel and repository survive quitting. The write was debounced half a second and the
-  quit path exits in ten milliseconds, so a short session remembered nothing at all.
-- `g` and `G` scroll the detail pane when it has focus, like every other movement key. They used to move
-  the hidden list cursor instead — swapping the repository being read — and did nothing at all on Logs.
-- The published package carries `THIRD-PARTY-NOTICES.txt` for the MIT and BSD-2-Clause code its bundle
-  inlines, which it shipped without before.
-- Building from a directory whose path contains a space works. It failed with `FileNotFound` naming a
-  percent-encoded path that does not exist on disk.
-- `solid-js` and `@opentui/core` are pinned to the versions the bundled binding was compiled against, so
-  the npm package and the release binaries cannot drift apart.
-
-- A command that hangs no longer locks the app out of every later action. The timeout bounds wall-clock
-  time rather than just signalling the child, and the process group is killed if SIGTERM is ignored.
-- Failures say what actually happened: a timeout reads as a timeout rather than `command failed`, a
-  binary without its execute bit as `not executable` rather than `not found`, and a status call that
-  could not run as an error rather than as `daemon stopped`.
-
-- The selected repository stays selected when a poll re-sorts the list, instead of the highlight and the
-  detail pane changing record with no keypress.
-- `q quit` and `? help` are always on the hint bar; they used to be dropped at every realistic width.
-- A message stays visible for a few seconds on its own, and a message about the running command is shown
-  rather than hidden behind the spinner.
-- CJK and emoji text no longer misaligns tables or gets cut mid-character.
-- Yanking says whether it copied to the clipboard or only sent an OSC 52 sequence the terminal may
-  ignore, and every yank reports its errors.
-- The savings dashboard no longer draws the three bucket bars twice, and shows the figures as the CLI
-  printed them (`$0.2070`, not `$0.207`).
-- A hand-edited log tail, `LAZYGORTEX_STATE_FILE=OFF`, an unknown flag and `--outfile` with no path are
-  refused rather than acted on.
-- The help overlay lists every key that runs a binding, not just the abbreviation the hint bar uses.
-
-### Added
-
-- `--check-renderer`, which loads the terminal renderer and exits non-zero if it cannot. `--version`
-  exits before the renderer is constructed, so it could not tell a working build from a broken one.
-
-## [0.1.0] - 2026-08-18
+## [0.1.0] - 2026-08-19
 
 First public release.
 
@@ -93,14 +15,26 @@ First public release.
 - Seven panels — Repos, Workspaces, Projects, Sessions, Savings, Daemon, Logs — in a lazydocker-style
   column, with a detail pane driven by the selection.
 - Repository actions: track, untrack, re-index, enrich, `gortex init`, set workspace/project, filter,
-  yank path. Destructive actions confirm first.
+  yank path. Destructive actions confirm first; setting a workspace asks for the slug.
 - Daemon actions: start, stop, restart, reload config.
-- Freshness marks that separate "stale" from "not a git repository", with a legend and a re-index key.
+- Freshness marks that separate "stale" from "not a git repository" and from "the repo listing did not
+  answer", with a legend and a re-index key.
+- Selection that survives the three-second poll: the row you chose stays chosen when the list re-sorts.
+- An active filter is visible: the panel title carries the needle, the summary counts the filtered rows
+  against the tracked ones, and an empty list says which needle excluded everything.
 - Mouse support for panels, rows, the detail pane and dialog buttons.
 - Colour as signal: freshness, severity thresholds, magnitude, recency; structure stays grey.
-- Box-drawing tables for declarations, sessions, savings, index sizes and the repo roster.
-- The last panel and repository are remembered between runs.
+- Box-drawing tables for declarations, sessions, savings, index sizes and the repo roster, sized to the
+  pane they are drawn in and measured in terminal columns, so CJK and emoji stay aligned.
+- A layout that holds at 80x24 and below: overlays clamp to the terminal, the help overlay keeps the
+  line that says how to close it, and a terminal too short for seven panels says how many it left out.
+- A Logs panel that renders the newest 500 lines of a buffer that reaches 5000, and says how many older
+  ones are held.
+- The last panel and repository are remembered between runs, and are written before the app exits.
 - A setup screen explaining how to fix things when the `gortex` binary cannot be found.
+- `--check-renderer`, which loads the terminal renderer and exits non-zero if it cannot — `--version`
+  exits before the renderer is constructed, so it cannot tell a working build from a broken one.
+- `THIRD-PARTY-NOTICES.txt`, generated at build time from the licences of the code the bundle inlines.
 
 [Unreleased]: https://github.com/myndbash/lazygortex/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/myndbash/lazygortex/releases/tag/v0.1.0
