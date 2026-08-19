@@ -53,6 +53,22 @@ export function savePersisted(next: PersistedState): void {
   }, 500)
 }
 
+/**
+ * Write anything still pending, now. The quit path exits ten milliseconds after
+ * it destroys the renderer, so without this every navigation in the last half
+ * second is lost — and a session shorter than the debounce writes nothing at
+ * all, which is why the remembered view never appeared on a first run.
+ */
+export async function flushPersisted(): Promise<void> {
+  if (timer) {
+    clearTimeout(timer)
+    timer = null
+  }
+  const snapshot = pending
+  pending = null
+  if (snapshot) await write(snapshot)
+}
+
 async function write(state: PersistedState): Promise<void> {
   const path = stateFile()
   if (!path) return

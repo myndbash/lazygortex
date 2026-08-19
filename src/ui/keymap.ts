@@ -56,6 +56,12 @@ const quit = (): void => {
   setState("quitting", true)
 }
 
+/**
+ * A scroll delta no content can survive, which is how `g`/`G` reach the ends:
+ * the scroll hook takes a delta, and the scrollbox clamps it to its own range.
+ */
+const JUMP = 1_000_000
+
 export function globalBindings(): Binding[] {
   return [
     { keys: ["q", "ctrl+c"], label: "q", description: "quit", hint: true, run: quit },
@@ -87,8 +93,21 @@ export function globalBindings(): Binding[] {
       description: "page up",
       run: () => (state.focus === "main" ? scrollMain(-15) : moveCursor(-10)),
     },
-    { keys: ["g", "home"], label: "g", description: "jump to top", run: () => jumpCursor("top") },
-    { keys: ["G", "end"], label: "G", description: "jump to bottom", run: () => jumpCursor("bottom") },
+    {
+      keys: ["g", "home"],
+      label: "g",
+      description: "jump to top",
+      // every other movement key branches on focus; these two did not, so on
+      // Logs they did nothing at all and on Repos they silently changed the
+      // repository the user was reading
+      run: () => (state.focus === "main" ? scrollMain(-JUMP) : jumpCursor("top")),
+    },
+    {
+      keys: ["G", "end"],
+      label: "G",
+      description: "jump to bottom",
+      run: () => (state.focus === "main" ? scrollMain(JUMP) : jumpCursor("bottom")),
+    },
     {
       keys: ["return", "l", "right"],
       label: "↵",

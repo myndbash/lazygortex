@@ -48,6 +48,10 @@ All notable changes to this project are documented here. The format follows
   `index matches HEAD` and a stale count of zero. A repo the daemon knows about but the listing does not
   describe is marked unknown rather than green.
 - The header counts the repositories the panel below it lists, so the two numbers cannot disagree.
+- The remembered panel and repository survive quitting. The write was debounced half a second and the
+  quit path exits in ten milliseconds, so a short session remembered nothing at all.
+- `g` and `G` scroll the detail pane when it has focus, like every other movement key. They used to move
+  the hidden list cursor instead — swapping the repository being read — and did nothing at all on Logs.
 
 ## [0.1.0] - 2026-08-18
 

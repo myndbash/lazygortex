@@ -17,6 +17,7 @@ import {
   setState,
   type PanelId,
 } from "../state/store.ts"
+import { flushPersisted } from "../state/persist.ts"
 import { handleKey, keyId } from "./keymap.ts"
 import { stateColor } from "./semantics.ts"
 import { MainPane } from "./MainPane.tsx"
@@ -230,9 +231,13 @@ export function App() {
 
   createEffect(() => {
     if (!state.quitting) return
-    renderer.destroy()
-    // give the renderer a tick to restore the terminal before exiting
-    setTimeout(() => process.exit(0), 10)
+    // the debounced view state is only in memory until its timer fires, and
+    // that timer never gets to fire on the way out
+    void flushPersisted().finally(() => {
+      renderer.destroy()
+      // give the renderer a tick to restore the terminal before exiting
+      setTimeout(() => process.exit(0), 10)
+    })
   })
 
   // keep the cursor inside the list when the underlying data shrinks
