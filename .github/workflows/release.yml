@@ -141,9 +141,12 @@ jobs:
             echo "::notice::NPM_TOKEN is not set — skipping the npm publish. The release and its binaries are unaffected; add the secret and re-run this job to publish."
           fi
 
-      # provenance attests what the runner built from *this* ref: on a dispatch
-      # run that is a branch, not the tag the release is named after, so the
-      # attestation would say something true about the wrong thing
+      # provenance is asked for here rather than in publishConfig, which would
+      # demand it of every publish including one from a laptop, where there is
+      # no provider to attest and npm refuses with `provider: null`.
+      # It attests what the runner built from *this* ref: on a dispatch run that
+      # is a branch, not the tag the release is named after, so the attestation
+      # would say something true about the wrong thing
       - name: Publish
         if: steps.token.outputs.present == 'true'
         run: npm publish ${{ github.event_name == 'push' && '--provenance' || '' }} --access public

@@ -61,7 +61,6 @@
     "@opentui/core": "0.5.3"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   }
 }
