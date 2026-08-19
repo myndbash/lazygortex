@@ -65,6 +65,20 @@ All notable changes to this project are documented here. The format follows
   binary without its execute bit as `not executable` rather than `not found`, and a status call that
   could not run as an error rather than as `daemon stopped`.
 
+- The selected repository stays selected when a poll re-sorts the list, instead of the highlight and the
+  detail pane changing record with no keypress.
+- `q quit` and `? help` are always on the hint bar; they used to be dropped at every realistic width.
+- A message stays visible for a few seconds on its own, and a message about the running command is shown
+  rather than hidden behind the spinner.
+- CJK and emoji text no longer misaligns tables or gets cut mid-character.
+- Yanking says whether it copied to the clipboard or only sent an OSC 52 sequence the terminal may
+  ignore, and every yank reports its errors.
+- The savings dashboard no longer draws the three bucket bars twice, and shows the figures as the CLI
+  printed them (`$0.2070`, not `$0.207`).
+- A hand-edited log tail, `LAZYGORTEX_STATE_FILE=OFF`, an unknown flag and `--outfile` with no path are
+  refused rather than acted on.
+- The help overlay lists every key that runs a binding, not just the abbreviation the hint bar uses.
+
 ### Added
 
 - `--check-renderer`, which loads the terminal renderer and exits non-zero if it cannot. `--version`
