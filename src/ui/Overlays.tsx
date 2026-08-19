@@ -116,20 +116,16 @@ function HelpOverlay() {
     }
     out.push([c(theme.info, "1…7".padEnd(8)), c(theme.text, "jump straight to a panel")])
 
+    // generated from the same table the marks are drawn from, so a mark can
+    // never appear on screen without a line here explaining it
     out.push([], [c(theme.accent, "── repository marks ")])
-    out.push([c(FRESHNESS.fresh.fg, `${FRESHNESS.fresh.mark} fresh    `), c(theme.text, FRESHNESS.fresh.label)])
-    out.push([
-      c(FRESHNESS.stale.fg, `${FRESHNESS.stale.mark} stale    `),
-      c(theme.text, `${FRESHNESS.stale.label} — press R to re-index`),
-    ])
-    out.push([
-      c(FRESHNESS.unversioned.fg, `${FRESHNESS.unversioned.mark} no git   `),
-      c(theme.text, FRESHNESS.unversioned.label),
-    ])
-    out.push([
-      c(FRESHNESS.unindexed.fg, `${FRESHNESS.unindexed.mark} unindexed`),
-      c(theme.text, ` ${FRESHNESS.unindexed.label}`),
-    ])
+    for (const [name, mark] of Object.entries(FRESHNESS)) {
+      const hint = name === "stale" ? " — press R to re-index" : ""
+      out.push([
+        c(mark.fg, `${mark.mark} ${name.padEnd(12)}`),
+        c(theme.text, truncate(`${mark.label}${hint}`, room() - 14)),
+      ])
+    }
     return out
   })
 

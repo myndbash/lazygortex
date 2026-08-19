@@ -33,6 +33,7 @@ export const FRESHNESS: Record<Freshness, { mark: string; label: string; fg: str
   stale: { mark: glyph.stale, label: "HEAD moved past the index", fg: theme.warn },
   unversioned: { mark: glyph.unversioned, label: "not a git repo — freshness unknown", fg: theme.info },
   unindexed: { mark: glyph.bad, label: "no index yet", fg: theme.error },
+  unknown: { mark: glyph.warn, label: "the repo listing did not answer", fg: theme.dim },
 }
 
 /** Kept short on purpose: a bottom title longer than the box is dropped. */

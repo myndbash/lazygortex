@@ -75,7 +75,8 @@ export function Header(props: { width: number }) {
     if (state.binary.ok !== true) return []
     return [
       [
-        c(stale() ? theme.warn : theme.muted, `${status()?.repos.length ?? 0} repos`),
+        // the same list the panel below counts, not the daemon's own table
+        c(stale() ? theme.warn : theme.muted, `${repoRows({ filtered: false }).length} repos`),
         ...(stale() ? [c(theme.warn, ` (${stale()} stale)`)] : []),
       ],
       [c(theme.dim, `  ${glyph.bullet}  `), c(theme.muted, `${status()?.mcpSessions.length ?? 0} sessions`)],

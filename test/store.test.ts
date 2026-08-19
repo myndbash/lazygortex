@@ -226,3 +226,46 @@ describe("repoRows is memoised", () => {
     expect(repoRows()).toBe(repoRows({ filtered: false }))
   })
 })
+
+describe("freshness of rows the repo listing never described", () => {
+  const daemonOnly = {
+    repo: "parser",
+    path: "/home/u/parser",
+    workspace: "demouser/parser",
+    total: "8.7 MiB",
+    files: 270,
+    nodes: 11762,
+    edges: 48085,
+  }
+
+  test("a daemon-only row is unknown, not fresh", () => {
+    setState("repos", "data", [])
+    setState("status", "data", { running: true, fields: [], workspaces: [], mcpSessions: [], repos: [daemonOnly] })
+
+    // there is no branch, head or indexed commit to compare here
+    expect(repoRows()[0]?.freshness).toBe("unknown")
+  })
+
+  test("a failed repo listing does not paint every repo green", () => {
+    setState("status", "data", {
+      running: true,
+      fields: [],
+      workspaces: [],
+      mcpSessions: [],
+      repos: [daemonOnly, { ...daemonOnly, repo: "ledger", path: "/home/u/ledger" }],
+    })
+    setState("repos", "error", "timeout after 20000ms")
+
+    // `repos --json` failing used to mean every repo reported `index matches
+    // HEAD`, with nothing on screen saying the listing had failed
+    expect(repoRows().every((row) => row.freshness === "unknown")).toBe(true)
+    expect(repoRows().some((row) => row.freshness === "fresh")).toBe(false)
+  })
+
+  test("a row the listing does describe keeps its real freshness", () => {
+    setState("repos", "data", [{ ...repo("parser", "/home/u/parser"), stale: true }])
+    setState("status", "data", { running: true, fields: [], workspaces: [], mcpSessions: [], repos: [daemonOnly] })
+
+    expect(repoRows()[0]?.freshness).toBe("stale")
+  })
+})

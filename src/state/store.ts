@@ -274,7 +274,8 @@ export const refresh = {
 // derived selections
 // ---------------------------------------------------------------------------
 
-export type Freshness = "fresh" | "stale" | "unversioned" | "unindexed"
+/** `unknown` is for a repo the daemon knows about and `repos --json` does not. */
+export type Freshness = "fresh" | "stale" | "unversioned" | "unindexed" | "unknown"
 
 export interface RepoRow {
   name: string
@@ -348,7 +349,10 @@ function buildRepoRows(): RepoRow[] {
       project,
       branch: "",
       head: "",
-      freshness: "fresh",
+      // there is no branch, no head and no indexed commit here to compare, so
+      // any freshness would be an assertion the data cannot support — and a
+      // failed `repos --json` sends every repo down this branch
+      freshness: "unknown",
       lastIndexed: "",
       files: row.files,
       nodes: row.nodes,

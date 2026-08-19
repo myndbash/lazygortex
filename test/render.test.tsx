@@ -363,6 +363,14 @@ maybe("lazygortex", () => {
     expect(setup.captureCharFrame()).not.toContain("Repos /")
   })
 
+  test("a failed repo listing is reported, not painted green", async () => {
+    setState("repos", "error", "timeout after 20000ms")
+    await setup.flush()
+
+    // the repos slot was the one async slot with no ErrorLine anywhere
+    expect(setup.captureCharFrame()).toContain("timeout after 20000ms")
+  })
+
   test("the logs view renders a bounded window and says what it left out", async () => {
     setup.mockInput.pressKey("7")
     await setup.flush()

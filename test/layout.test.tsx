@@ -151,6 +151,35 @@ describe("the header at a narrow terminal", () => {
     expect(frame).toContain("lazygortex")
     for (const line of lines(frame)) expect(line.trimEnd().length).toBeLessThanOrEqual(60)
   })
+
+  test("counts the same repositories the panel below it lists", async () => {
+    setState("binary", { ok: true, path: "/usr/bin/gortex" })
+    // `repos --json` lists a freshly tracked repo before the daemon's own table
+    // does, and the header used to count the table while the panel counted this
+    setState("repos", "data", [
+      { name: "parser", path: "/home/u/parser", head_commit: "abc", branch: "main", stale: false, indexed: true },
+      { name: "ledger", path: "/home/u/ledger", head_commit: "", stale: false, indexed: false },
+    ])
+    setState("status", "data", {
+      running: true,
+      fields: [],
+      workspaces: [],
+      mcpSessions: [],
+      repos: [
+        {
+          repo: "parser",
+          path: "/home/u/parser",
+          workspace: "demouser/parser",
+          total: "8.7 MiB",
+          files: 270,
+          nodes: 11762,
+          edges: 48085,
+        },
+      ],
+    })
+
+    expect(await render(() => <Header width={80} />, 80, 3)).toContain("2 repos")
+  })
 })
 
 describe("the side column", () => {

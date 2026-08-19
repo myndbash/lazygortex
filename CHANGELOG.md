@@ -44,6 +44,10 @@ All notable changes to this project are documented here. The format follows
 - The side column's overflow line no longer reads `↓ 0 more` at the bottom of a list; it counts what is
   off-screen above and below. On a terminal too short for all seven panels, the ones left out are
   announced rather than silently dropped.
+- A repository listing that fails is reported, instead of every repository being marked fresh with
+  `index matches HEAD` and a stale count of zero. A repo the daemon knows about but the listing does not
+  describe is marked unknown rather than green.
+- The header counts the repositories the panel below it lists, so the two numbers cannot disagree.
 
 ## [0.1.0] - 2026-08-18
 

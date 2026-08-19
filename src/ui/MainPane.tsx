@@ -124,6 +124,8 @@ function ReposDetail() {
       {(row: Accessor<RepoRow>) => (
         <box style={{ flexDirection: "column" }}>
           <Section title={row().name} />
+          {/* the one async slot that never reported its own failures */}
+          <ErrorLine error={state.repos.error} />
           <KV k="path" v={shortPath(row().path)} />
           <KV k="workspace" v={row().project ? `${row().workspace}/${row().project}` : row().workspace} />
           <KV k="branch" v={row().branch} fg={branchColor(row().branch)} />
