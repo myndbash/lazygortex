@@ -154,3 +154,41 @@ describe("repoRows and the workspace slug", () => {
     expect(repoRows().find((row) => row.name === "service@org")?.project).toBe("redmine")
   })
 })
+
+describe("repoRows and rows that are not repositories", () => {
+  test("a daemon row whose path is prose is not merged in as a repo", () => {
+    setState("repos", "data", [repo("parser", "/home/u/parser")])
+    setState("status", "data", {
+      running: true,
+      fields: [],
+      workspaces: [],
+      mcpSessions: [],
+      repos: [
+        {
+          repo: "parser",
+          path: "/home/u/parser",
+          workspace: "demouser/parser",
+          total: "8.7 MiB",
+          files: 270,
+          nodes: 11762,
+          edges: 48085,
+        },
+        // the parser drops this one now; the merge loop is the second line of
+        // defence, because it is what turned the row into a repository
+        {
+          repo: "other",
+          path: "embedder + runtime + caches (not attributed)",
+          workspace: "",
+          total: "93.6 MiB",
+          files: 0,
+          nodes: 0,
+          edges: 0,
+        },
+      ],
+    })
+
+    expect(repoRows().map((row) => row.name)).toEqual(["parser"])
+    expect(isTracked("embedder + runtime + caches (not attributed)")).toBe(false)
+    expect(projectRows().map((row) => row.key)).toEqual(["demouser/parser"])
+  })
+})

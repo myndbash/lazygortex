@@ -23,6 +23,11 @@ All notable changes to this project are documented here. The format follows
   split a real project's node count and added a group named after the placeholder.
 - `r` on the Projects panel reloads the declarations the grouping is built from, instead of spending
   1.2 seconds on an index-health call the panel does not display. Sessions no longer pays for it either.
+- The Sessions list holds still. It was emitted in the daemon's randomised map order and re-sorted on
+  every 3-second poll, so the selected row changed record without a keypress, and it carried an extra
+  row for the status call that was reading it.
+- The daemon's `other` totals row — its unattributed memory, not a repository — no longer appears in the
+  Repos panel, the repo count, or as a `/other` project.
 
 ## [0.1.0] - 2026-08-18
 

@@ -83,6 +83,94 @@ All time    ███████░░░░░░░░░   43.7%  saved 492,
   })
 })
 
+/**
+ * A live capture, unlike the STATUS fixture above: the tracked-repos table
+ * carries the daemon's `other` totals row behind a mid-table rule and the four
+ * `_b` columns a later CLI release added, and the sessions table carries the
+ * control session that reading the status registers for itself.
+ */
+const SESSION_ROWS = [
+  "│ 0de613a0462362bc608001b995b1f9b8 │ claude-code │ 2.1.235 │    44m30s │ /home/demouser/Development/Dev/ledger │",
+  "│ fd1a03ad387e2abd337e7c96f63a1a42 │ claude-code │ 2.1.235 │    44m30s │ /home/demouser/Work/beta              │",
+  "│ sess_f2ce9acb66478ba4            │ cli         │         │        0s │                                       │",
+  "│ a8ef1e1b7f4783b23b831c22777602bf │ claude-code │ 2.1.235 │    44m30s │ /home/demouser/Work/gamma01           │",
+]
+
+/** The daemon emits these in Go map order, which is randomised per call. */
+function statusWithSessionOrder(order: number[]): string {
+  return ` daemon    v0.63.3+d4801638
+ pid       1257
+ sessions  4
+
+tracked repos:
+┌─────────┬─────────────────┬──────────┬───────┬────────┬────────┬───────────┬──────────┬──────────┬───────────┬──────────────────────────────────────────────┐
+│ repo    │ workspace       │ total    │ files │  nodes │  edges │ nodes_b   │ edges_b  │ search_b │ vectors_b │ path                                         │
+├─────────┼─────────────────┼──────────┼───────┼────────┼────────┼───────────┼──────────┼──────────┼───────────┼──────────────────────────────────────────────┤
+│ parser  │ demouser/parser │  8.7 MiB │   270 │  11762 │  48085 │   2.9 MiB │  5.9 MiB │      0 B │       0 B │ /home/demouser/Sandbox/parser                │
+│ gamma01 │ org/gamma01     │  2.1 MiB │    87 │   3053 │  10841 │ 763.2 KiB │  1.3 MiB │      0 B │       0 B │ /home/demouser/Work/gamma01                  │
+├─────────┼─────────────────┼──────────┼───────┼────────┼────────┼───────────┼──────────┼──────────┼───────────┼──────────────────────────────────────────────┤
+│ other   │                 │ 93.6 MiB │       │        │        │           │          │          │           │ embedder + runtime + caches (not attributed) │
+└─────────┴─────────────────┴──────────┴───────┴────────┴────────┴───────────┴──────────┴──────────┴───────────┴──────────────────────────────────────────────┘
+
+MCP sessions:
+┌──────────────────────────────────┬─────────────┬─────────┬───────────┬───────────────────────────────────────┐
+│ id                               │ client      │ version │ connected │ cwd                                   │
+├──────────────────────────────────┼─────────────┼─────────┼───────────┼───────────────────────────────────────┤
+${order.map((index) => SESSION_ROWS[index]).join("\n")}
+└──────────────────────────────────┴─────────────┴─────────┴───────────┴───────────────────────────────────────┘
+`
+}
+
+describe("parseDaemonStatus, against a live capture", () => {
+  const status = parseDaemonStatus(statusWithSessionOrder([0, 1, 2, 3]))
+
+  test("the `other` totals row is not a repository", () => {
+    // it arrives behind a mid-table rule, with prose where a path belongs, and
+    // used to reach the Repos panel as a seventh repo that flickers in and out
+    expect(status.repos.map((row) => row.repo)).toEqual(["parser", "gamma01"])
+    expect(status.repos.some((row) => row.path.startsWith("embedder"))).toBe(false)
+  })
+
+  test("columns are still read by header, not by position", () => {
+    // the CLI grew nodes_b/edges_b/search_b/vectors_b between repo and path
+    expect(status.repos[0]).toMatchObject({
+      repo: "parser",
+      workspace: "demouser/parser",
+      nodes: 11762,
+      edges: 48085,
+      path: "/home/demouser/Sandbox/parser",
+    })
+  })
+
+  test("the control session the status call registers for itself is dropped", () => {
+    expect(status.mcpSessions).toHaveLength(3)
+    expect(status.mcpSessions.some((session) => session.client === "cli")).toBe(false)
+  })
+
+  test("sessions come out in the same order whatever order the daemon emits", () => {
+    const orders = [
+      [0, 1, 2, 3],
+      [2, 3, 0, 1],
+      [3, 2, 1, 0],
+      [1, 0, 3, 2],
+    ]
+    const parsed = orders.map((order) => parseDaemonStatus(statusWithSessionOrder(order)).mcpSessions.map((s) => s.id))
+
+    expect([...new Set(parsed.map((ids) => ids.join(",")))]).toHaveLength(1)
+    expect(parsed[0]).toEqual([
+      "0de613a0462362bc608001b995b1f9b8",
+      "fd1a03ad387e2abd337e7c96f63a1a42",
+      "a8ef1e1b7f4783b23b831c22777602bf",
+    ])
+  })
+
+  test("the key/value block and later sections still parse around the summary row", () => {
+    expect(status.version).toBe("v0.63.3+d4801638")
+    expect(status.pid).toBe("1257")
+    expect(status.mcpSessions[0]?.cwd).toBe("/home/demouser/Development/Dev/ledger")
+  })
+})
+
 const WORKSPACE_LIST = `┌─────────────┬────────────────────────┬────────────────────────┬──────────────┬──────────────────────────┐
 │ REPO        │ WORKSPACE              │ PROJECT                │ SOURCE       │ PATH                     │
 ├─────────────┼────────────────────────┼────────────────────────┼──────────────┼──────────────────────────┤

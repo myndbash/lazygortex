@@ -53,7 +53,14 @@ function readTable(lines: string[], from: number): { rows: Array<Record<string, 
 
   for (; i < lines.length; i++) {
     const line = lines[i]!
-    if (isRule(line)) continue
+    if (isRule(line)) {
+      // A rule that arrives after a data row separates a summary block from the
+      // data: `daemon status` closes its tracked-repos table with an `other`
+      // totals row carrying prose where a path belongs. The rule under the
+      // header has no rows behind it yet and is simply skipped.
+      if (rows.length > 0) break
+      continue
+    }
     const cells = tableCells(line)
     if (cells.length === 0) break
     const row: Record<string, string> = {}
@@ -62,6 +69,9 @@ function readTable(lines: string[], from: number): { rows: Array<Record<string, 
     })
     rows.push(row)
   }
+  // whatever is left of the table is not data, but `next` still has to point
+  // past it or the caller re-reads those lines
+  while (i < lines.length && (isRule(lines[i]!) || tableCells(lines[i]!).length > 0)) i++
   return { rows, next: i }
 }
 
@@ -118,13 +128,20 @@ export function parseDaemonStatus(raw: string): DaemonStatus {
 
     if (section === "mcp sessions:") {
       const { rows, next } = readTable(lines, i + 1)
-      status.mcpSessions = rows.map<DaemonSession>((row) => ({
-        id: row["id"] ?? "",
-        client: row["client"] ?? "",
-        version: row["version"] ?? "",
-        connected: row["connected"] ?? "",
-        cwd: row["cwd"] ?? "",
-      }))
+      status.mcpSessions = rows
+        .map<DaemonSession>((row) => ({
+          id: row["id"] ?? "",
+          client: row["client"] ?? "",
+          version: row["version"] ?? "",
+          connected: row["connected"] ?? "",
+          cwd: row["cwd"] ?? "",
+        }))
+        // reading the status registers a control session of its own, so the
+        // list would carry a phantom row with a fresh id on every poll
+        .filter((session) => !(session.client === "cli" && session.cwd === ""))
+        // the daemon emits these in Go map order, randomised per call; a cursor
+        // that is an integer into that list changes record without a keypress
+        .sort((a, b) => a.client.localeCompare(b.client) || a.cwd.localeCompare(b.cwd) || a.id.localeCompare(b.id))
       i = next - 1
       continue
     }

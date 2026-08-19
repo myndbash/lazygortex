@@ -336,6 +336,8 @@ export function repoRows(options: { filtered?: boolean } = {}): RepoRow[] {
 
   // repos the daemon knows about but the config listing does not
   for (const row of daemonRepos) {
+    // a row whose path is not a path is a summary line, not a repository
+    if (!row.path.startsWith("/")) continue
     if (rows.some((existing) => existing.path === row.path)) continue
     const [workspace = "", project = ""] = row.workspace.split("/")
     rows.push({
